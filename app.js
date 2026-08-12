@@ -308,26 +308,29 @@ const app = {
 
     // --- WORKER VIEWER & SHARING ---
     compartirResumen: function() {
-        if (!state.currentTrabajadorAsistencia || !state.currentMes || !state.currentYear) return;
+        if (!state.currentTrabajadorAsistencia || !state.currentMesAsistencia) return;
         
         const trabajador = state.trabajadores.find(t => t.id === state.currentTrabajadorAsistencia);
         if (!trabajador) return;
 
-        const dateKey = `${state.currentYear}-${state.currentMes}`;
+        const dateKey = state.currentMesAsistencia.format('YYYY-MM');
+        const m = state.currentMesAsistencia.month() + 1;
+        const y = state.currentMesAsistencia.year();
+
         const data = {
             t: { n: trabajador.nombre, r: trabajador.rut, s: trabajador.sueldo },
-            m: state.currentMes,
-            y: state.currentYear,
+            m: m,
+            y: y,
             a: (state.asistencia[dateKey] || {})[state.currentTrabajadorAsistencia] || {},
             ad: (state.adelantos[dateKey] || {})[state.currentTrabajadorAsistencia] || {},
             n: (state.notas[dateKey] || {})[state.currentTrabajadorAsistencia] || {},
             f: state.feriados[dateKey] || {}
         };
 
-        const text = `Hola ${trabajador.nombre}, aquí puedes ver en vivo tu resumen de asistencia de ${meses[state.currentMes - 1]} ${state.currentYear}.`;
+        const text = `Hola ${trabajador.nombre}, aquí puedes ver en vivo tu resumen de asistencia de ${meses[m - 1]} ${y}.`;
         let url = '';
-        if (db) {
-            url = `${window.location.origin}${window.location.pathname}?worker=${trabajador.id}&m=${state.currentMes}&y=${state.currentYear}`;
+        if (typeof db !== 'undefined' && db) {
+            url = `${window.location.origin}${window.location.pathname}?worker=${trabajador.id}&m=${m}&y=${y}`;
         } else {
             const base64Data = btoa(encodeURIComponent(JSON.stringify(data)));
             url = `${window.location.origin}${window.location.pathname}?resumen=${base64Data}`;
@@ -497,7 +500,7 @@ const app = {
         const shareBtn = document.getElementById('btn-share-resumen');
         state.currentTrabajadorAsistencia = select.value;
         if(state.currentTrabajadorAsistencia) {
-            this.renderCalendario(state.currentTrabajadorAsistencia, state.currentMes, state.currentYear);
+            this.renderCalendario();
             if (shareBtn) shareBtn.style.display = 'flex';
         } else {
             document.getElementById('calendario-asistencia').innerHTML = '';
@@ -1234,7 +1237,7 @@ const app = {
         this.guardarDatos('asistencia', state.asistencia);
         this.cerrarModal('modal-asistencia-masiva');
         this.updateDashboard();
-        if (state.currentTrabajadorAsistencia) this.renderCalendario(state.currentTrabajadorAsistencia, state.currentMes, state.currentYear);
+        if (state.currentTrabajadorAsistencia) this.renderCalendario();
         
         alert(`Se guardó la asistencia de ${checkboxes.length} trabajador(es) correctamente.`);
     }
