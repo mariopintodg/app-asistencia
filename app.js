@@ -121,6 +121,51 @@ const app = {
         try { this.updateDashboard(); } catch(e) { console.error(e); }
     },
 
+    loadData: function() {
+        const fields = ['trabajadores', 'obras', 'asistencia', 'adelantos', 'notas', 'feriados'];
+        let hasLocalData = false;
+        fields.forEach(f => {
+            const data = localStorage.getItem(f);
+            if (data) {
+                state[f] = JSON.parse(data);
+                if (f === 'trabajadores' && state.trabajadores.length > 0) hasLocalData = true;
+            }
+        });
+
+        if (db) {
+            db.collection('appData').doc('estado').onSnapshot(doc => {
+                if (doc.exists) {
+                    const cloudData = doc.data();
+                    state.trabajadores = cloudData.trabajadores || [];
+                    state.obras = cloudData.obras || [];
+                    state.asistencia = cloudData.asistencia || {};
+                    state.adelantos = cloudData.adelantos || {};
+                    state.notas = cloudData.notas || {};
+                    state.feriados = cloudData.feriados || {};
+
+                    this.updateSelects();
+                    this.updateDashboard();
+                    if (window.location.hash === '#trabajadores') this.renderTrabajadores();
+                    if (window.location.hash === '#obras') this.renderObras();
+                    if (state.currentTrabajadorAsistencia) this.renderCalendario(state.currentTrabajadorAsistencia, state.currentMes, state.currentYear);
+                    
+                    fields.forEach(f => localStorage.setItem(f, JSON.stringify(state[f])));
+                } else if (hasLocalData) {
+                    db.collection('appData').doc('estado').set({
+                        trabajadores: state.trabajadores,
+                        obras: state.obras,
+                        asistencia: state.asistencia,
+                        adelantos: state.adelantos,
+                        notas: state.notas,
+                        feriados: state.feriados
+                    }).catch(console.error);
+                }
+            }, err => {
+                console.error("Firebase listen error: ", err);
+            });
+        }
+    },
+
     // --- Navegación ---
     setupNavigation: function() {
         const navItems = document.querySelectorAll('.nav-item');
