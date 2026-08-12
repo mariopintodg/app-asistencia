@@ -318,9 +318,9 @@ const app = {
             t: { n: trabajador.nombre, r: trabajador.rut, s: trabajador.sueldo },
             m: state.currentMes,
             y: state.currentYear,
-            a: state.asistencia[state.currentTrabajadorAsistencia]?.[dateKey] || {},
-            ad: state.adelantos[state.currentTrabajadorAsistencia]?.[dateKey] || [],
-            n: state.notas[state.currentTrabajadorAsistencia]?.[dateKey] || {},
+            a: (state.asistencia[dateKey] || {})[state.currentTrabajadorAsistencia] || {},
+            ad: (state.adelantos[dateKey] || {})[state.currentTrabajadorAsistencia] || {},
+            n: (state.notas[dateKey] || {})[state.currentTrabajadorAsistencia] || {},
             f: state.feriados[dateKey] || {}
         };
 
@@ -1161,7 +1161,9 @@ const app = {
         });
 
         // Configurar fecha por defecto a hoy
-        document.getElementById('fecha-masiva').value = dayjs().format('YYYY-MM-DD');
+        const hoyStr = dayjs().format('YYYY-MM-DD');
+        document.getElementById('fecha-masiva-desde').value = hoyStr;
+        document.getElementById('fecha-masiva-hasta').value = hoyStr;
 
         // Llenar lista de trabajadores
         const listaCont = document.getElementById('lista-trabajadores-masiva');
