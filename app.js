@@ -145,8 +145,8 @@ const app = {
 
                     this.updateSelects();
                     this.updateDashboard();
-                    if (window.location.hash === '#trabajadores') this.renderTrabajadores();
-                    if (window.location.hash === '#obras') this.renderObras();
+                    this.renderTrabajadores();
+                    this.renderObras();
                     if (state.currentTrabajadorAsistencia) this.renderCalendario(state.currentTrabajadorAsistencia, state.currentMes, state.currentYear);
                     
                     fields.forEach(f => localStorage.setItem(f, JSON.stringify(state[f])));
