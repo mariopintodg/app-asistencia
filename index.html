@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a237e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <title>Asistencia de Obras</title>
+    <link rel="stylesheet" href="styles.css?v=34">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Iconos Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/localeData.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/es.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Botón Hamburguesa Móvil -->
+        <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('sidebar-open');">
+            <i class="ph ph-list"></i>
+        </button>
+
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="logo-empresa.png" alt="MYP Construcciones" class="company-logo">
+                </div>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active" data-target="dashboard">
+                    <i class="ph ph-squares-four"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-target="trabajadores">
+                    <i class="ph ph-users"></i>
+                    <span>Trabajadores</span>
+                </li>
+                <li class="nav-item" data-target="obras">
+                    <i class="ph ph-buildings"></i>
+                    <span>Obras</span>
+                </li>
+                <li class="nav-item" data-target="asistencia">
+                    <i class="ph ph-calendar-check"></i>
+                    <span>Asistencia</span>
+                </li>
+                <li class="nav-item" data-target="view-reportes">
+                    <i class="ph ph-file-pdf"></i>
+                    <span>Reportes</span>
+                </li>
+            </ul>
+            <div class="scroll-indicator">
+                <i class="ph ph-caret-down"></i>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Dashboard View -->
+            <section id="dashboard" class="view-section active">
+                <header class="view-header">
+                    <div class="mobile-logo-header">
+                        <img src="logo-empresa.png" alt="MYP Construcciones">
+                    </div>
+                    <h1>Resumen del Mes</h1>
+                    <p class="subtitle" id="current-month-dashboard">Agosto 2026</p>
+                </header>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="ph ph-users"></i></div>
+                        <div class="stat-info">
+                            <h3>Trabajadores Activos</h3>
+                            <p class="stat-value" id="stat-trabajadores">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon"><i class="ph ph-buildings"></i></div>
+                        <div class="stat-info">
+                            <h3>Obras Activas</h3>
+                            <p class="stat-value" id="stat-obras">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card highlight">
+                        <div class="stat-icon"><i class="ph ph-money"></i></div>
+                        <div class="stat-info">
+                            <h3>Total Estimado a Pagar</h3>
+                            <p class="stat-value" id="stat-total-pago">$0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="dashboard-obras-cost mt-4">
+                    <h3 style="margin-bottom: 15px; font-size: 1.1rem; color: var(--text-light);">Mano de Obra por Partida</h3>
+                    <ul id="lista-costos-obra" class="costos-list">
+                        <!-- Generado por JS -->
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Trabajadores View -->
+            <section id="trabajadores" class="view-section">
+                <header class="view-header flex-between">
+                    <div>
+                        <h1>Trabajadores</h1>
+                        <p class="subtitle">Gestiona el personal y sus sueldos base</p>
+                    </div>
+                    <button class="btn-primary" onclick="app.abrirModal('modal-trabajador')">
+                        <i class="ph ph-plus"></i> Nuevo Trabajador
+                    </button>
+                </header>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre Completo</th>
+                                <th>RUT</th>
+                                <th>Especialidad</th>
+                                <th>Sueldo Diario</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-trabajadores-body">
+                            <!-- Filas generadas por JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Obras View -->
+            <section id="obras" class="view-section">
+                <header class="view-header flex-between">
+                    <div>
+                        <h1>Obras</h1>
+                        <p class="subtitle">Administra tus proyectos actuales</p>
+                    </div>
+                    <button class="btn-primary" onclick="app.abrirModal('modal-obra')">
+                        <i class="ph ph-plus"></i> Nueva Obra
+                    </button>
+                </header>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre de la Obra</th>
+                                <th>Dirección</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-obras-body">
+                            <!-- Filas generadas por JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Asistencia View -->
+            <section id="asistencia" class="view-section">
+                <header class="view-header flex-between">
+                    <div>
+                        <h1>Registro de Asistencia</h1>
+                        <p class="subtitle">Marca los días trabajados y las obras</p>
+                    </div>
+                    <div class="month-selector" style="width: 100%;">
+                        <button class="icon-btn" onclick="app.cambiarMesAsistencia(-1)"><i class="ph ph-caret-left"></i></button>
+                        <div class="calendar-top-header-wrapper" style="display: flex; justify-content: space-between; align-items: flex-end; width: 100%; padding: 0 20px;">
+                            <div class="mini-calendar-container" id="mini-calendar-prev"></div>
+                            
+                            <div class="calendar-top-header">
+                                <h2 class="cal-year" id="mes-actual-year">2026</h2>
+                                <h3 class="cal-month" id="mes-actual-month">AGOSTO</h3>
+                            </div>
+
+                            <div class="mini-calendar-container" id="mini-calendar-next"></div>
+                        </div>
+                        <button class="icon-btn" onclick="app.cambiarMesAsistencia(1)"><i class="ph ph-caret-right"></i></button>
+                    </div>
+                </header>
+                
+                <div class="asistencia-controls">
+                    <div class="input-group" style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label>Seleccionar Trabajador:</label>
+                            <select id="select-trabajador-asistencia" onchange="app.cambiarTrabajadorAsistencia()">
+                                <option value="">Seleccione un trabajador...</option>
+                            </select>
+                        </div>
+                        <button class="btn-primary" style="height: 46px; padding: 0 15px; border-radius: 100px; display: flex; align-items: center; gap: 8px; white-space: nowrap;" onclick="app.abrirModalAsistenciaMasiva()">
+                            <i class="ph ph-users"></i> Masivo
+                        </button>
+                        <button id="btn-share-resumen" class="btn-secondary" style="height: 46px; padding: 0 15px; border-radius: 100px; display: none; align-items: center; gap: 8px; white-space: nowrap; border-color: var(--primary);" onclick="app.compartirResumen()">
+                            <i class="ph ph-share-network" style="color: var(--primary)"></i> Compartir
+                        </button>
+                    </div>
+                    <div class="resumen-asistencia-boxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                        <div class="resumen-pago-box" style="flex: 1; min-width: 120px; padding: 10px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59,130,246,0.3); border-radius: var(--radius-md);">
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Total Días por Pagar:</span>
+                            <span id="pago-acumulado-mes" style="font-size: 1.1rem; color: #3b82f6; font-weight: 700;">$0</span>
+                        </div>
+                        <div class="adelanto-box" style="flex: 1; min-width: 120px; padding: 10px; background: rgba(239, 54, 81, 0.1); border: 1px solid rgba(239,54,81,0.3); border-radius: var(--radius-md);">
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">Adelantos en el mes:</span>
+                            <span id="adelanto-mes-texto" style="font-size: 1.1rem; color: var(--danger);">-$0</span>
+                        </div>
+                        <div class="total-final-box" style="flex: 1; min-width: 120px; padding: 10px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: var(--radius-md);">
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">A Pagar Fin Mes:</span>
+                            <span id="pago-final-mes" style="font-weight: 700; color: var(--success); font-size: 1.1rem;">$0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="calendar-container">
+                    <div id="nombre-trabajador-calendario" style="text-align: center; color: var(--primary); font-size: 1.3rem; font-weight: 700; margin-bottom: 15px; letter-spacing: 0.5px; text-transform: uppercase;"></div>
+                    <div class="calendar-header">
+                        <div class="cal-header-cell week-col">SEMANA</div>
+                        <div class="cal-header-cell">Lunes</div>
+                        <div class="cal-header-cell">Martes</div>
+                        <div class="cal-header-cell">Miércoles</div>
+                        <div class="cal-header-cell">Jueves</div>
+                        <div class="cal-header-cell">Viernes</div>
+                        <div class="cal-header-cell">Sábado</div>
+                        <div class="cal-header-cell sunday">Domingo</div>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid">
+                        <!-- Días generados por JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reportes -->
+            <section id="view-reportes" class="view-section">
+                <header class="section-header">
+                    <div>
+                        <h1>Reporte Mensual</h1>
+                        <p class="subtitle">Genera un resumen general del mes para imprimir o exportar a PDF</p>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" onclick="app.cambiarMesReporte(-1)"><i class="ph ph-caret-left"></i></button>
+                        <span id="mes-reporte-actual" style="font-weight: 600; min-width: 140px; text-align: center; display: inline-block;">Agosto 2026</span>
+                        <button class="btn btn-secondary" onclick="app.cambiarMesReporte(1)"><i class="ph ph-caret-right"></i></button>
+                        <button class="btn btn-primary" onclick="app.exportarPDF()"><i class="ph ph-download"></i> Exportar a PDF</button>
+                    </div>
+                </header>
+
+                <div class="card" style="padding: 24px; overflow-x: auto;">
+                    <!-- Contenedor que se exportará a PDF -->
+                    <div id="reporte-pdf-container" class="report-pdf-layout">
+                        <div class="report-header-print">
+                            <h2>Resumen de Asistencia y Pagos</h2>
+                            <p class="report-company-name">Constructora / Contratista</p>
+                            <p class="report-period" id="report-period-text">Período: Agosto 2026</p>
+                        </div>
+
+                        <div class="report-metrics">
+                            <div class="report-metric">
+                                <span class="metric-label">Trabajadores Activos</span>
+                                <span class="metric-val" id="report-tot-trabajadores">0</span>
+                            </div>
+                            <div class="report-metric">
+                                <span class="metric-label">Obras Activas</span>
+                                <span class="metric-val" id="report-tot-obras">0</span>
+                            </div>
+                            <div class="report-metric highlight">
+                                <span class="metric-label">Total a Pagar</span>
+                                <span class="metric-val" id="report-tot-pagar">$0</span>
+                            </div>
+                        </div>
+
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Trabajador</th>
+                                    <th style="text-align: center;">Días Trabajados</th>
+                                    <th>Obras Involucradas</th>
+                                    <th style="text-align: right;">Adelantos</th>
+                                    <th style="text-align: right;">Total a Pagar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-table-body">
+                                <!-- Filas generadas por JS -->
+                            </tbody>
+                        </table>
+
+                        <div style="margin-top: 20px;">
+                            <h3 style="color: #1a237e; font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">Desglose de Mano de Obra por Partida</h3>
+                            <table class="report-table" style="width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th>Obra</th>
+                                        <th style="width: 80px; text-align: center;">Días</th>
+                                        <th style="width: 120px; text-align: right;">Costo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-table-obras-body">
+                                    <!-- Filas generadas por JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div style="margin-top: 20px;" id="contenedor-reporte-notas">
+                            <h3 style="color: #1a237e; font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">Observaciones del Mes</h3>
+                            <table class="report-table" style="width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 100px;">Fecha</th>
+                                        <th style="width: 150px;">Trabajador</th>
+                                        <th>Observación / Nota</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-table-notas-body">
+                                    <!-- Filas generadas por JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="report-footer-print mt-5">
+                            <div class="signatures">
+                                <div class="signature-box">
+                                    <div class="signature-line"></div>
+                                    <p>Firma Supervisor</p>
+                                </div>
+                                <div class="signature-box">
+                                    <div class="signature-line"></div>
+                                    <p>Firma Administrador</p>
+                                </div>
+                            </div>
+                            <p class="print-date" id="report-print-date">Generado el: --</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Modales -->
+    <div class="modal-overlay" id="modal-trabajador">
+        <div class="modal">
+            <header class="modal-header">
+                <h2 id="titulo-modal-trabajador">Nuevo Trabajador</h2>
+                <button class="icon-btn close-modal" onclick="app.cerrarModal('modal-trabajador')"><i class="ph ph-x"></i></button>
+            </header>
+            <form id="form-trabajador" onsubmit="app.guardarTrabajador(event)">
+                <input type="hidden" id="trabajador-id">
+                <div class="input-group">
+                    <label for="trabajador-nombre">Nombre Completo</label>
+                    <input type="text" id="trabajador-nombre" required>
+                </div>
+                <div class="input-group">
+                    <label for="trabajador-rut">RUT</label>
+                    <input type="text" id="trabajador-rut" placeholder="Ej: 12.345.678-9" required>
+                </div>
+                <div class="input-group">
+                    <label for="trabajador-especialidad">Especialidad</label>
+                    <input type="text" id="trabajador-especialidad" placeholder="Ej: Carpintero, Albañil" required>
+                </div>
+                <div class="input-group">
+                    <label for="trabajador-sueldo">Sueldo Diario ($)</label>
+                    <input type="number" id="trabajador-sueldo" required min="1">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="app.cerrarModal('modal-trabajador')">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-obra">
+        <div class="modal">
+            <header class="modal-header">
+                <h2 id="titulo-modal-obra">Nueva Obra</h2>
+                <button class="icon-btn close-modal" onclick="app.cerrarModal('modal-obra')"><i class="ph ph-x"></i></button>
+            </header>
+            <form id="form-obra" onsubmit="app.guardarObra(event)">
+                <input type="hidden" id="obra-id">
+                <div class="input-group">
+                    <label for="obra-nombre">Nombre de la Obra</label>
+                    <input type="text" id="obra-nombre" required>
+                </div>
+                <div class="input-group">
+                    <label for="obra-direccion">Dirección</label>
+                    <input type="text" id="obra-direccion" required>
+                </div>
+                <div class="input-group">
+                    <label for="obra-estado">Estado</label>
+                    <select id="obra-estado">
+                        <option value="Activa">Activa</option>
+                        <option value="Terminada">Terminada</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="app.cerrarModal('modal-obra')">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-asistencia-dia">
+        <div class="modal">
+            <header class="modal-header">
+                <h2>Registrar Asistencia</h2>
+                <button class="icon-btn close-modal" onclick="app.cerrarModal('modal-asistencia-dia')"><i class="ph ph-x"></i></button>
+            </header>
+            <div class="modal-body">
+                <p id="texto-fecha-asistencia" style="margin-bottom: 15px; font-weight: 500;"></p>
+                <input type="hidden" id="fecha-seleccionada">
+                <div class="input-group">
+                    <label>Obra donde trabajó:</label>
+                    <select id="select-obra-dia">
+                        <option value="">(Ninguna obra - Desmarcar)</option>
+                    </select>
+                </div>
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>¿Dar adelanto este día?</label>
+                    <input type="number" id="input-adelanto-dia" placeholder="Monto (ej. 50000)">
+                    <small style="color: var(--text-muted); margin-top: 5px; display: block;" id="info-adelanto-dia"></small>
+                </div>
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>Observación / Nota (Opcional):</label>
+                    <textarea id="input-nota-dia" rows="2" placeholder="Ej. Llegó tarde, falta de EPP, permiso especial..." style="width: 100%; background: #151720; border: 1px solid var(--border); color: var(--text-main); padding: 12px; border-radius: var(--radius-sm); font-family: 'Inter', sans-serif; resize: vertical;"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions flex-between">
+                <button type="button" class="btn-danger" onclick="app.borrarAsistenciaDia()">Borrar</button>
+                <div>
+                    <button type="button" class="btn-secondary" onclick="app.cerrarModal('modal-asistencia-dia')">Cancelar</button>
+                    <button type="button" class="btn-primary" onclick="app.guardarAsistenciaDia()">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Asistencia Masiva -->
+    <div class="modal-overlay" id="modal-asistencia-masiva">
+        <div class="modal">
+            <header class="modal-header">
+                <h2>Ingreso Masivo de Asistencia</h2>
+                <button class="icon-btn close-modal" onclick="app.cerrarModal('modal-asistencia-masiva')"><i class="ph ph-x"></i></button>
+            </header>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>Fecha de Asistencia:</label>
+                    <input type="date" id="fecha-masiva" required>
+                </div>
+                <div class="input-group">
+                    <label>Obra:</label>
+                    <select id="select-obra-masiva">
+                        <!-- Opciones generadas por JS -->
+                    </select>
+                </div>
+                
+                <h3 style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px;">Trabajadores que asistieron:</h3>
+                
+                <div class="checkbox-list-container" id="lista-trabajadores-masiva">
+                    <!-- Checkboxes generados por JS -->
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="app.cerrarModal('modal-asistencia-masiva')">Cancelar</button>
+                <button type="button" class="btn-primary" onclick="app.guardarAsistenciaMasiva()">Guardar Masivo</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            fetch('http://192.168.18.3:8001/log_error?msg=' + encodeURIComponent(msg + ' at ' + lineNo + ':' + columnNo));
+            return false;
+        };
+    </script>
+
+    <!-- Visor Público del Trabajador (Oculto por defecto) -->
+    <section id="worker-viewer" style="display: none; min-height: 100vh; background: var(--bg-main); padding-bottom: 50px;">
+        <div class="worker-viewer-container" style="max-width: 500px; margin: 0 auto; padding: 20px;">
+            <div class="viewer-header" style="text-align: center; margin-bottom: 25px;">
+                <div class="logo-placeholder" style="width: 60px; height: 60px; background: rgba(59, 130, 246, 0.1); border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center;">
+                    <i class="ph ph-user-circle" style="font-size: 40px; color: var(--primary);"></i>
+                </div>
+                <h2 id="wv-nombre" style="font-size: 1.5rem; margin-bottom: 5px; color: var(--text-main);">Nombre</h2>
+                <p id="wv-rut" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 15px;">RUT</p>
+                <div style="display: inline-block; background: rgba(255,255,255,0.05); border-radius: 100px; padding: 5px 15px; font-weight: 600; font-size: 0.85rem; color: var(--primary);">
+                    Resumen <span id="wv-mes">Mes</span>
+                </div>
+            </div>
+
+            <div class="resumen-asistencia-boxes" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 25px;">
+                <div style="padding: 15px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-lg); text-align: center;">
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px;">Días Asistidos</p>
+                    <p id="wv-dias" style="font-size: 1.3rem; font-weight: 700; color: var(--text-main);">0</p>
+                </div>
+                <div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: var(--radius-lg); text-align: center;">
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px;">Adelantos</p>
+                    <p id="wv-adelantos" style="font-size: 1.3rem; font-weight: 700; color: var(--danger);">$0</p>
+                </div>
+                <div style="grid-column: span 2; padding: 20px; background: linear-gradient(145deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05)); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-lg); text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+                    <p style="font-size: 0.85rem; color: var(--primary); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Total a Pagar</p>
+                    <p id="wv-total" style="font-size: 2.2rem; font-weight: 800; color: #fff; text-shadow: 0 2px 10px rgba(59, 130, 246, 0.5);">$0</p>
+                    <p id="wv-sueldo-base" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 10px;">Basado en $0 / día</p>
+                </div>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-lg); padding: 15px; margin-bottom: 25px;">
+                <h3 style="font-size: 1rem; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                    <i class="ph ph-calendar-check" style="color: var(--primary);"></i> Calendario
+                </h3>
+                <div class="calendar-grid" id="wv-calendar" style="margin-bottom: 0;"></div>
+            </div>
+
+            <div id="wv-notas-container" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-lg); padding: 15px;">
+                <h3 style="font-size: 1rem; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                    <i class="ph ph-chat-text" style="color: #eab308;"></i> Observaciones
+                </h3>
+                <div id="wv-notas-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px; font-size: 0.7rem; color: var(--text-muted); opacity: 0.5;">
+                Generado por Asistencia de Obras App
+            </div>
+        </div>
+    </section>
+
+    <!-- App Logic -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="app.js?v=22"></script>
+    <script>
+        // Registrar Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(registration => {
+                    console.log('ServiceWorker registrado con éxito: ', registration.scope);
+                }).catch(error => {
+                    console.log('Fallo al registrar el ServiceWorker: ', error);
+                });
+            });
+        }
+    </script>
+</body>
+</html>

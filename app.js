@@ -1,0 +1,1103 @@
+// Configuración de Day.js
+if (typeof dayjs === 'undefined') { window.dayjs = function() { return { format: () => '2026-08', add: () => window.dayjs(), subtract: () => window.dayjs(), daysInMonth: () => 31, startOf: () => window.dayjs(), day: () => 1 }; }; window.dayjs.locale = function(){}; }
+dayjs.locale('es');
+
+// Estado Global de la App
+const getLS = (k, d) => { try { const i = localStorage.getItem(k); return i ? JSON.parse(i) : d; } catch(e) { return d; } };
+const state = {
+    trabajadores: getLS('trabajadores', []),
+    obras: getLS('obras', []),
+    asistencia: getLS('asistencia', {}),
+    adelantos: getLS('adelantos', {}),
+    notas: getLS('notas', {}),
+    feriados: {
+        "2026-01-01": "Año Nuevo",
+        "2026-04-03": "Viernes Santo",
+        "2026-04-04": "Sábado Santo",
+        "2026-05-01": "Día del Trabajo",
+        "2026-05-21": "Glorias Navales",
+        "2026-06-21": "Pueblos Indígenas",
+        "2026-06-29": "San Pedro y San Pablo",
+        "2026-07-16": "Virgen del Carmen",
+        "2026-08-15": "Asunción de la Virgen",
+        "2026-09-18": "Independencia Nacional",
+        "2026-09-19": "Glorias del Ejército",
+        "2026-10-12": "Encuentro de Dos Mundos",
+        "2026-10-31": "Iglesias Evangélicas",
+        "2026-11-01": "Todos los Santos",
+        "2026-12-08": "Inmaculada Concepción",
+        "2026-12-25": "Navidad"
+    },
+    currentMesAsistencia: dayjs(),
+    currentMesReporte: dayjs(),
+    trabajadorSeleccionadoAsistencia: null
+};
+
+// Utilidades para formatear moneda
+const formatoMoneda = new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: 'CLP',
+    maximumFractionDigits: 0
+});
+
+// App Controller
+const app = {
+    init: function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const resumenData = urlParams.get('resumen');
+        
+        if (resumenData) {
+            document.querySelector('.app-container').style.display = 'none';
+            document.getElementById('worker-viewer').style.display = 'block';
+            this.renderWorkerSummary(resumenData);
+            return;
+        }
+
+        try { this.loadData(); } catch(e) { console.error("Error en loadData:", e); }
+        try { this.setupNavigation(); } catch(e) { console.error("Error en setupNavigation:", e); }
+        
+        // Configurar menú móvil
+        const menuBtn = document.getElementById('mobile-menu-btn');
+        const sidebar = document.getElementById('sidebar');
+        if(menuBtn && sidebar) {
+            // Cerrar sidebar si se hace clic fuera en modo móvil
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth <= 768 && !sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
+                    sidebar.classList.remove('sidebar-open');
+                }
+            });
+        }
+
+        // Migración de datos antiguos: Adelantos mensuales a diarios
+        try {
+            if (state.adelantos) {
+                let migrated = false;
+                Object.keys(state.adelantos).forEach(mes => {
+                    Object.keys(state.adelantos[mes]).forEach(tId => {
+                        if (typeof state.adelantos[mes][tId] === 'number' || typeof state.adelantos[mes][tId] === 'string') {
+                            const monto = parseInt(state.adelantos[mes][tId]);
+                            state.adelantos[mes][tId] = {};
+                            if (monto > 0) {
+                                const primerDia = `${mes}-01`;
+                                state.adelantos[mes][tId][primerDia] = {
+                                    monto: monto,
+                                    timestamp: dayjs().format('DD/MM/YYYY HH:mm')
+                                };
+                            }
+                            migrated = true;
+                        }
+                    });
+                });
+                if (migrated) this.guardarDatos('adelantos', state.adelantos);
+            }
+        } catch(e) { console.error("Error migrating adelantos", e); }
+
+        // Renderizar vistas iniciales
+        try { this.renderTrabajadores(); } catch(e) { console.error(e); }
+        try { this.renderObras(); } catch(e) { console.error(e); }
+        try { this.updateSelects(); } catch(e) { console.error(e); }
+        try { this.updateDashboard(); } catch(e) { console.error(e); }
+    },
+
+    // --- Navegación ---
+    setupNavigation: function() {
+        const navItems = document.querySelectorAll('.nav-item');
+        const views = document.querySelectorAll('.view-section');
+
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                // Quitar active de navs
+                navItems.forEach(nav => nav.classList.remove('active'));
+                item.classList.add('active');
+
+                // Mostrar vista
+                const targetId = item.getAttribute('data-target');
+                views.forEach(view => {
+                    if (view.id === targetId) {
+                        view.classList.add('active');
+                        // Actualizar datos si es necesario al entrar a la vista
+                        try {
+                            if(targetId === 'dashboard') this.updateDashboard();
+                            if(targetId === 'asistencia') this.renderCalendario();
+                            if(targetId === 'view-reportes') this.renderReporte();
+                        } catch(e) { console.error("Error al actualizar vista:", e); }
+                    } else {
+                        view.classList.remove('active');
+                    }
+                });
+                
+                // Cerrar sidebar en móviles tras hacer clic
+                if (window.innerWidth <= 768) {
+                    const sidebar = document.getElementById('sidebar');
+                    if (sidebar) sidebar.classList.remove('sidebar-open');
+                }
+            });
+        });
+    },
+
+    // --- Modales ---
+    abrirModal: function(modalId, idToEdit = null) {
+        const modal = document.getElementById(modalId);
+        modal.classList.add('active');
+        
+        // Limpiar form
+        const form = modal.querySelector('form');
+        if (form) form.reset();
+
+        // Si es edición de trabajador
+        if (modalId === 'modal-trabajador' && idToEdit) {
+            const t = state.trabajadores.find(x => x.id === idToEdit);
+            if (t) {
+                document.getElementById('titulo-modal-trabajador').innerText = "Editar Trabajador";
+                document.getElementById('trabajador-id').value = t.id;
+                document.getElementById('trabajador-nombre').value = t.nombre;
+                document.getElementById('trabajador-rut').value = t.rut;
+                document.getElementById('trabajador-especialidad').value = t.especialidad;
+                document.getElementById('trabajador-sueldo').value = t.sueldo;
+            }
+        } else if (modalId === 'modal-trabajador') {
+            document.getElementById('titulo-modal-trabajador').innerText = "Nuevo Trabajador";
+            document.getElementById('trabajador-id').value = "";
+        }
+
+        // Si es edición de obra
+        if (modalId === 'modal-obra' && idToEdit) {
+            const o = state.obras.find(x => x.id === idToEdit);
+            if (o) {
+                document.getElementById('titulo-modal-obra').innerText = "Editar Obra";
+                document.getElementById('obra-id').value = o.id;
+                document.getElementById('obra-nombre').value = o.nombre;
+                document.getElementById('obra-direccion').value = o.direccion;
+                document.getElementById('obra-estado').value = o.estado;
+            }
+        } else if (modalId === 'modal-obra') {
+            document.getElementById('titulo-modal-obra').innerText = "Nueva Obra";
+            document.getElementById('obra-id').value = "";
+        }
+    },
+
+    cerrarModal: function(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+    },
+
+    // --- Trabajadores ---
+    guardarTrabajador: function(e) {
+        e.preventDefault();
+        const id = document.getElementById('trabajador-id').value;
+        const nombre = document.getElementById('trabajador-nombre').value;
+        const rut = document.getElementById('trabajador-rut').value;
+        const especialidad = document.getElementById('trabajador-especialidad').value;
+        const sueldo = parseInt(document.getElementById('trabajador-sueldo').value);
+
+        if (id) {
+            // Editar
+            const index = state.trabajadores.findIndex(x => x.id === id);
+            if (index > -1) {
+                state.trabajadores[index] = { id, nombre, rut, especialidad, sueldo };
+            }
+        } else {
+            // Nuevo
+            const nuevoId = 't_' + Date.now();
+            state.trabajadores.push({ id: nuevoId, nombre, rut, especialidad, sueldo });
+        }
+
+        this.guardarDatos('trabajadores', state.trabajadores);
+        this.renderTrabajadores();
+        this.updateSelects();
+        this.cerrarModal('modal-trabajador');
+    },
+
+    eliminarTrabajador: function(id) {
+        if (confirm("¿Estás seguro de eliminar este trabajador? Se mantendrá su registro de asistencia histórico pero no se podrá asignar a nuevas obras.")) {
+            state.trabajadores = state.trabajadores.filter(x => x.id !== id);
+            this.guardarDatos('trabajadores', state.trabajadores);
+            this.renderTrabajadores();
+            this.updateSelects();
+        }
+    },
+
+    cambiarFeriado: function(dia) {
+        if (!state.currentMes || !state.currentYear) return;
+        const key = `${state.currentYear}-${state.currentMes}`;
+        if (!state.feriados[key]) state.feriados[key] = {};
+        
+        const actual = state.feriados[key][dia] || '';
+        const nuevo = prompt(`Ingrese el nombre del feriado para el día ${dia} (Deje en blanco para eliminar):`, actual);
+        
+        if (nuevo !== null) {
+            if (nuevo.trim() === '') {
+                delete state.feriados[key][dia];
+            } else {
+                state.feriados[key][dia] = nuevo.trim();
+            }
+            this.guardarDatos('feriados', state.feriados);
+            if (state.currentTrabajadorAsistencia) {
+                this.renderCalendario(state.currentTrabajadorAsistencia, state.currentMes, state.currentYear);
+            }
+        }
+    },
+
+    // --- WORKER VIEWER & SHARING ---
+    compartirResumen: function() {
+        if (!state.currentTrabajadorAsistencia || !state.currentMes || !state.currentYear) return;
+        
+        const trabajador = state.trabajadores.find(t => t.id === state.currentTrabajadorAsistencia);
+        if (!trabajador) return;
+
+        const dateKey = `${state.currentYear}-${state.currentMes}`;
+        const data = {
+            t: { n: trabajador.nombre, r: trabajador.rut, s: trabajador.sueldo },
+            m: state.currentMes,
+            y: state.currentYear,
+            a: state.asistencia[state.currentTrabajadorAsistencia]?.[dateKey] || {},
+            ad: state.adelantos[state.currentTrabajadorAsistencia]?.[dateKey] || [],
+            n: state.notas[state.currentTrabajadorAsistencia]?.[dateKey] || {},
+            f: state.feriados[dateKey] || {}
+        };
+
+        const base64Data = btoa(encodeURIComponent(JSON.stringify(data)));
+        const url = `${window.location.origin}${window.location.pathname}?resumen=${base64Data}`;
+        const text = `Hola ${trabajador.nombre}, aquí tienes tu resumen de asistencia de ${meses[state.currentMes - 1]} ${state.currentYear}.`;
+
+        if (navigator.share) {
+            navigator.share({
+                title: 'Resumen de Asistencia',
+                text: text,
+                url: url
+            }).catch(console.error);
+        } else {
+            prompt('Copia este enlace para compartir el resumen:', url);
+        }
+    },
+
+    renderWorkerSummary: function(base64Data) {
+        try {
+            const data = JSON.parse(decodeURIComponent(atob(base64Data)));
+            
+            // Set basic info
+            document.getElementById('wv-nombre').innerText = data.t.n;
+            document.getElementById('wv-rut').innerText = data.t.r;
+            document.getElementById('wv-mes').innerText = `${meses[data.m - 1]} ${data.y}`;
+            document.getElementById('wv-sueldo-base').innerText = `Basado en ${formatoMoneda.format(data.t.s)} / día`;
+
+            // Calculate totals
+            let diasAsistidos = 0;
+            let totalAdelantos = 0;
+            
+            Object.values(data.a).forEach(asist => {
+                if (asist.asistio) diasAsistidos++;
+            });
+            
+            data.ad.forEach(adelanto => {
+                totalAdelantos += adelanto.monto;
+            });
+
+            const totalBruto = diasAsistidos * data.t.s;
+            const totalPagar = totalBruto - totalAdelantos;
+
+            document.getElementById('wv-dias').innerText = diasAsistidos;
+            document.getElementById('wv-adelantos').innerText = formatoMoneda.format(totalAdelantos);
+            document.getElementById('wv-total').innerText = formatoMoneda.format(totalPagar);
+
+            // Render read-only calendar
+            const wvCalendar = document.getElementById('wv-calendar');
+            wvCalendar.innerHTML = '';
+            
+            const diasMes = new Date(data.y, data.m, 0).getDate();
+            const primerDia = new Date(data.y, data.m - 1, 1).getDay();
+            const startDay = primerDia === 0 ? 6 : primerDia - 1;
+
+            const diasSemana = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
+            wvCalendar.innerHTML += `<div class="cal-header-cell">W</div>`;
+            diasSemana.forEach(d => {
+                wvCalendar.innerHTML += `<div class="cal-header-cell">${d}</div>`;
+            });
+
+            let weekCounter = 1;
+            let currentDay = 1;
+            let rowLength = 0;
+
+            for (let i = 0; i < startDay; i++) {
+                if (i === 0) wvCalendar.innerHTML += `<div class="week-num-cell">${weekCounter}</div>`;
+                wvCalendar.innerHTML += `<div class="day-cell-empty"></div>`;
+                rowLength++;
+            }
+
+            for (let i = 1; i <= diasMes; i++) {
+                if (rowLength === 0) {
+                    wvCalendar.innerHTML += `<div class="week-num-cell">${weekCounter}</div>`;
+                }
+
+                const dKey = i.toString();
+                const asist = data.a[dKey];
+                const isFeriado = data.f[dKey];
+                const hasNota = data.n[dKey];
+
+                const cell = document.createElement('div');
+                cell.className = 'day-cell wv-day-cell';
+                if (asist && asist.asistio) cell.classList.add('asistio');
+
+                let html = `<span class="day-number">${i}</span>`;
+                if (isFeriado) html += `<div class="feriado-text">${isFeriado}</div>`;
+                if (hasNota) html += `<i class="ph-fill ph-chat-text note-indicator" style="position: absolute; top: 4px; right: 4px; color: #eab308; font-size: 1rem;"></i>`;
+                
+                cell.innerHTML = html;
+                wvCalendar.appendChild(cell);
+
+                rowLength++;
+                if (rowLength === 7) {
+                    rowLength = 0;
+                    weekCounter++;
+                }
+            }
+
+            // Fill remaining cells
+            while (rowLength > 0 && rowLength < 7) {
+                wvCalendar.innerHTML += `<div class="day-cell-empty"></div>`;
+                rowLength++;
+            }
+
+            // Render notes list
+            const notasContainer = document.getElementById('wv-notas-container');
+            const notasList = document.getElementById('wv-notas-list');
+            
+            const notasKeys = Object.keys(data.n);
+            if (notasKeys.length > 0) {
+                notasContainer.style.display = 'block';
+                notasList.innerHTML = '';
+                notasKeys.forEach(dia => {
+                    const el = document.createElement('div');
+                    el.style.cssText = 'padding: 10px; background: rgba(0,0,0,0.2); border-left: 3px solid #eab308; border-radius: 4px; font-size: 0.85rem; color: var(--text-main); line-height: 1.4;';
+                    el.innerHTML = `<strong>Día ${dia}:</strong> ${data.n[dia]}`;
+                    notasList.appendChild(el);
+                });
+            }
+
+        } catch (e) {
+            console.error("Link inválido", e);
+            document.body.innerHTML = "<h2 style='text-align:center; padding: 50px; color:white;'>El enlace es inválido o está dañado.</h2>";
+        }
+    },
+
+    cambiarTrabajadorAsistencia: function() {
+        const select = document.getElementById('select-trabajador-asistencia');
+        const shareBtn = document.getElementById('btn-share-resumen');
+        state.currentTrabajadorAsistencia = select.value;
+        if(state.currentTrabajadorAsistencia) {
+            this.renderCalendario(state.currentTrabajadorAsistencia, state.currentMes, state.currentYear);
+            if (shareBtn) shareBtn.style.display = 'flex';
+        } else {
+            document.getElementById('calendario-asistencia').innerHTML = '';
+            document.getElementById('pago-acumulado-mes').innerText = '$0';
+            document.getElementById('adelantos-mes-badge').innerText = '$0';
+            if (shareBtn) shareBtn.style.display = 'none';
+        }
+    },
+
+    renderTrabajadores: function() {
+        const tbody = document.getElementById('tabla-trabajadores-body');
+        tbody.innerHTML = '';
+        
+        if (state.trabajadores.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="empty-state-cell" style="text-align:center; color: var(--text-muted);">No hay trabajadores registrados</td></tr>`;
+            return;
+        }
+
+        state.trabajadores.forEach(t => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="Nombre Completo"><strong>${t.nombre}</strong></td>
+                <td data-label="RUT">${t.rut}</td>
+                <td data-label="Especialidad">${t.especialidad}</td>
+                <td data-label="Sueldo Diario" style="color: var(--success); font-weight: 600;">${formatoMoneda.format(t.sueldo)}</td>
+                <td data-label="Acciones">
+                    <button class="icon-btn" onclick="app.abrirModal('modal-trabajador', '${t.id}')"><i class="ph ph-pencil-simple"></i></button>
+                    <button class="icon-btn" style="color: var(--danger)" onclick="app.eliminarTrabajador('${t.id}')"><i class="ph ph-trash"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    },
+
+    // --- Obras ---
+    guardarObra: function(e) {
+        e.preventDefault();
+        const id = document.getElementById('obra-id').value;
+        const nombre = document.getElementById('obra-nombre').value;
+        const direccion = document.getElementById('obra-direccion').value;
+        const estado = document.getElementById('obra-estado').value;
+
+        if (id) {
+            // Editar
+            const index = state.obras.findIndex(x => x.id === id);
+            if (index > -1) {
+                state.obras[index] = { id, nombre, direccion, estado };
+            }
+        } else {
+            // Nueva
+            const nuevoId = 'o_' + Date.now();
+            state.obras.push({ id: nuevoId, nombre, direccion, estado });
+        }
+
+        this.guardarDatos('obras', state.obras);
+        this.renderObras();
+        this.updateSelects();
+        this.cerrarModal('modal-obra');
+    },
+
+    eliminarObra: function(id) {
+        if(confirm("¿Estás seguro de eliminar esta obra?")) {
+            state.obras = state.obras.filter(o => o.id !== id);
+            this.guardarDatos('obras', state.obras);
+            this.renderObras();
+            this.updateSelects();
+            this.updateDashboard();
+        }
+    },
+
+    // --- Reportes ---
+    cambiarMesReporte: function(delta) {
+        state.currentMesAsistencia = state.currentMesAsistencia.add(delta, 'month');
+        this.renderReporte();
+        this.updateDashboard();
+        this.renderCalendario();
+    },
+
+    renderReporte: function() {
+        const mesTexto = state.currentMesAsistencia.format('MMMM YYYY');
+        document.getElementById('mes-reporte-actual').innerText = mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
+        document.getElementById('report-period-text').innerText = "Período: " + mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
+        document.getElementById('report-print-date').innerText = "Generado el: " + dayjs().format('DD/MM/YYYY HH:mm');
+
+        const mesKey = state.currentMesAsistencia.format('YYYY-MM');
+        
+        let totalPagar = 0;
+        let obrasActivasSet = new Set();
+        let trabajadoresActivos = 0;
+        let reportHTML = '';
+        let costoPorObra = {};
+
+        const asistenciaMes = state.asistencia[mesKey] || {};
+        
+        // Inicializar costos
+        state.obras.filter(o => o.estado === 'Activa').forEach(o => {
+            costoPorObra[o.id] = { nombre: o.nombre, total: 0, dias: 0 };
+        });
+
+        state.trabajadores.forEach(trabajador => {
+            const diasTrabajados = Object.keys(asistenciaMes[trabajador.id] || {}).length;
+            if (diasTrabajados > 0) {
+                trabajadoresActivos++;
+                
+                let adelanto = 0;
+                if(state.adelantos[mesKey] && state.adelantos[mesKey][trabajador.id]) {
+                    const diasAdelanto = state.adelantos[mesKey][trabajador.id];
+                    for (const f in diasAdelanto) {
+                        adelanto += (diasAdelanto[f].monto || 0);
+                    }
+                }
+                
+                const montoPagar = (diasTrabajados * trabajador.sueldo) - adelanto;
+                totalPagar += montoPagar;
+                
+                // Recolectar obras de este trabajador este mes
+                const obrasDelTrabajador = new Set();
+                for (const fecha in asistenciaMes[trabajador.id]) {
+                    const obraId = asistenciaMes[trabajador.id][fecha];
+                    const obra = state.obras.find(o => o.id === obraId);
+                    if (obra) {
+                        obrasDelTrabajador.add(obra.nombre);
+                        obrasActivasSet.add(obra.id);
+                        if (costoPorObra[obraId]) {
+                            costoPorObra[obraId].total += trabajador.sueldo;
+                            costoPorObra[obraId].dias += 1;
+                        }
+                    }
+                }
+
+                reportHTML += `
+                    <tr>
+                        <td>${trabajador.nombre}</td>
+                        <td style="text-align: center;">${diasTrabajados}</td>
+                        <td>${Array.from(obrasDelTrabajador).join(', ')}</td>
+                        <td style="text-align: right; color: var(--danger);">-$${adelanto.toLocaleString('es-CL')}</td>
+                        <td style="text-align: right;">$${montoPagar.toLocaleString('es-CL')}</td>
+                    </tr>
+                `;
+            }
+        });
+
+        if (trabajadoresActivos === 0) {
+            reportHTML = `<tr><td colspan="5" class="empty-state-cell" style="text-align: center;">No hay asistencias registradas en este mes.</td></tr>`;
+        }
+
+        document.getElementById('report-tot-trabajadores').innerText = trabajadoresActivos;
+        document.getElementById('report-tot-obras').innerText = obrasActivasSet.size;
+        document.getElementById('report-tot-pagar').innerText = '$' + totalPagar.toLocaleString('es-CL');
+        document.getElementById('report-table-body').innerHTML = reportHTML;
+        
+        // Renderizar segunda tabla (Desglose por Obra)
+        let obrasHTML = '';
+        Object.values(costoPorObra).forEach(obraData => {
+            if (obraData.total > 0 || true) { // Se muestran todas las activas
+                obrasHTML += `
+                    <tr>
+                        <td>${obraData.nombre}</td>
+                        <td style="text-align: center;">${obraData.dias}</td>
+                        <td style="text-align: right;">$${obraData.total.toLocaleString('es-CL')}</td>
+                    </tr>
+                `;
+            }
+        });
+        document.getElementById('report-table-obras-body').innerHTML = obrasHTML;
+        
+        // Renderizar tercera tabla (Observaciones)
+        let notasHTML = '';
+        const contenedorNotas = document.getElementById('contenedor-reporte-notas');
+        if (state.notas[mesKey]) {
+            Object.keys(state.notas[mesKey]).forEach(tId => {
+                const trabajador = state.trabajadores.find(t => t.id === tId);
+                const nombreT = trabajador ? trabajador.nombre : 'Desconocido';
+                
+                const diasNotas = state.notas[mesKey][tId];
+                Object.keys(diasNotas).forEach(fecha => {
+                    const nota = diasNotas[fecha];
+                    if (nota) {
+                        notasHTML += `
+                            <tr>
+                                <td>${dayjs(fecha).format('DD/MM/YYYY')}</td>
+                                <td>${nombreT}</td>
+                                <td>${nota}</td>
+                            </tr>
+                        `;
+                    }
+                });
+            });
+        }
+        
+        if (notasHTML === '') {
+            contenedorNotas.style.display = 'none';
+        } else {
+            contenedorNotas.style.display = 'block';
+            document.getElementById('report-table-notas-body').innerHTML = notasHTML;
+        }
+    },
+
+    exportarPDF: function() {
+        const elemento = document.getElementById('reporte-pdf-container');
+        const filename = 'Resumen_Asistencia_' + state.currentMesAsistencia.format('MM_YYYY') + '.pdf';
+        
+        const opt = {
+            margin:       10,
+            filename:     filename,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2 },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        html2pdf().set(opt).from(elemento).save();
+    },
+
+    renderObras: function() {
+        const tbody = document.getElementById('tabla-obras-body');
+        tbody.innerHTML = '';
+        
+        if (state.obras.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="empty-state-cell" style="text-align:center; color: var(--text-muted);">No hay obras registradas</td></tr>`;
+            return;
+        }
+
+        state.obras.forEach(o => {
+            const estadoBadge = o.estado === 'Activa' 
+                ? `<span style="background: rgba(16,185,129,0.2); color: var(--success); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">Activa</span>` 
+                : `<span style="background: rgba(148,163,184,0.2); color: var(--text-muted); padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">Terminada</span>`;
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="Nombre de la Obra"><strong>${o.nombre}</strong></td>
+                <td data-label="Dirección">${o.direccion}</td>
+                <td data-label="Estado">${estadoBadge}</td>
+                <td data-label="Acciones">
+                    <button class="icon-btn" onclick="app.abrirModal('modal-obra', '${o.id}')"><i class="ph ph-pencil-simple"></i></button>
+                    <button class="icon-btn" style="color: var(--danger)" onclick="app.eliminarObra('${o.id}')"><i class="ph ph-trash"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    },
+
+    // --- Helpers Globales ---
+    guardarDatos: function(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+        if(key === 'trabajadores' || key === 'asistencia' || key === 'adelantos') {
+            this.updateDashboard();
+        }
+    },
+
+    updateSelects: function() {
+        const selectTrabajador = document.getElementById('select-trabajador-asistencia');
+        const valActualT = selectTrabajador.value;
+        selectTrabajador.innerHTML = '<option value="">Seleccione un trabajador...</option>';
+        state.trabajadores.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.innerText = t.nombre;
+            selectTrabajador.appendChild(opt);
+        });
+        if(valActualT) selectTrabajador.value = valActualT;
+
+        const selectObra = document.getElementById('select-obra-dia');
+        selectObra.innerHTML = '<option value="">Seleccione una obra...</option>';
+        state.obras.filter(o => o.estado === 'Activa').forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.id;
+            opt.innerText = o.nombre;
+            selectObra.appendChild(opt);
+        });
+    },
+
+    // --- Dashboard ---
+    updateDashboard: function() {
+        document.getElementById('current-month-dashboard').innerText = state.currentMesAsistencia.format('MMMM YYYY').replace(/^\w/, c => c.toUpperCase());
+        document.getElementById('stat-trabajadores').innerText = state.trabajadores.length;
+        document.getElementById('stat-obras').innerText = state.obras.filter(o => o.estado === 'Activa').length;
+
+        // Calcular pago total estimado del mes actual y costos por obra
+        const mesActualKey = state.currentMesAsistencia.format('YYYY-MM');
+        let totalPagar = 0;
+        let costoPorObra = {};
+        
+        // Inicializar costo de obras activas
+        state.obras.filter(o => o.estado === 'Activa').forEach(o => {
+            costoPorObra[o.id] = { nombre: o.nombre, total: 0, dias: 0 };
+        });
+
+        if (state.asistencia[mesActualKey]) {
+            Object.keys(state.asistencia[mesActualKey]).forEach(tId => {
+                const diasObj = state.asistencia[mesActualKey][tId];
+                const diasTrabajados = Object.keys(diasObj).length;
+                const trabajador = state.trabajadores.find(t => t.id === tId);
+                
+                if (trabajador) {
+                    const pagoBruto = diasTrabajados * trabajador.sueldo;
+                    let adelanto = 0;
+                    if(state.adelantos[mesActualKey] && state.adelantos[mesActualKey][tId]) {
+                        const diasAdelanto = state.adelantos[mesActualKey][tId];
+                        for (const f in diasAdelanto) {
+                            adelanto += (diasAdelanto[f].monto || 0);
+                        }
+                    }
+                    totalPagar += (pagoBruto - adelanto);
+
+                    // Repartir el sueldo entre las obras donde trabajó
+                    Object.values(diasObj).forEach(obraId => {
+                        if (costoPorObra[obraId]) {
+                            costoPorObra[obraId].total += trabajador.sueldo; // suma un día de sueldo a la obra
+                            costoPorObra[obraId].dias += 1;
+                        }
+                    });
+                }
+            });
+        }
+
+        document.getElementById('stat-total-pago').innerText = formatoMoneda.format(Math.max(0, totalPagar));
+
+        // Renderizar lista de costos por obra en el Dashboard
+        const ulCostos = document.getElementById('lista-costos-obra');
+        ulCostos.innerHTML = '';
+        Object.values(costoPorObra).forEach(obraData => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span class="costo-obra-nombre">${obraData.nombre} <small style="color:var(--text-muted); font-weight:normal;">(${obraData.dias} días)</small></span>
+                <span class="costo-obra-monto">${formatoMoneda.format(obraData.total)}</span>
+            `;
+            ulCostos.appendChild(li);
+        });
+    },
+
+    // --- Asistencia y Calendario ---
+    cambiarMesAsistencia: function(delta) {
+        state.currentMesAsistencia = state.currentMesAsistencia.add(delta, 'month');
+        this.renderCalendario();
+        this.updateDashboard();
+        this.renderReporte();
+    },
+
+    renderMiniCalendario: function(containerId, mesTarget) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mini-calendar';
+        
+        const mesTexto = mesTarget.format('MMMM YYYY').toUpperCase();
+        wrapper.innerHTML = `
+            <div class="mini-cal-title">${mesTexto}</div>
+            <div class="mini-cal-header">
+                <div>LUN</div><div>MAR</div><div>MIE</div><div>JUE</div><div>VIE</div><div>SAB</div><div>DOM</div>
+            </div>
+        `;
+        
+        const grid = document.createElement('div');
+        grid.className = 'mini-cal-grid';
+        
+        const inicioMes = mesTarget.startOf('month');
+        const diasEnMes = mesTarget.endOf('month').date();
+        
+        let diaSemanaInicio = inicioMes.day();
+        diaSemanaInicio = diaSemanaInicio === 0 ? 7 : diaSemanaInicio;
+        
+        for (let i = 1; i < diaSemanaInicio; i++) {
+            grid.innerHTML += '<div></div>';
+        }
+        
+        for (let i = 1; i <= diasEnMes; i++) {
+            const esDomingo = mesTarget.date(i).day() === 0;
+            const esFeriado = state.feriados[mesTarget.date(i).format('YYYY-MM-DD')];
+            let classList = '';
+            if (esDomingo || esFeriado) classList = 'class="sunday"';
+            
+            grid.innerHTML += `<div ${classList}>${i}</div>`;
+        }
+        
+        wrapper.appendChild(grid);
+        container.appendChild(wrapper);
+    },
+
+    renderCalendario: function() {
+        document.getElementById('mes-actual-year').innerText = state.currentMesAsistencia.format('YYYY');
+        document.getElementById('mes-actual-month').innerText = state.currentMesAsistencia.format('MMMM');
+        
+        // Mini calendarios
+        const prevMes = state.currentMesAsistencia.subtract(1, 'month');
+        const nextMes = state.currentMesAsistencia.add(1, 'month');
+        this.renderMiniCalendario('mini-calendar-prev', prevMes);
+        this.renderMiniCalendario('mini-calendar-next', nextMes);
+        
+        const trabajadorId = document.getElementById('select-trabajador-asistencia').value;
+        const grid = document.getElementById('calendar-grid');
+        const nombreTitulo = document.getElementById('nombre-trabajador-calendario');
+        grid.innerHTML = '';
+        
+        if (trabajadorId) {
+            const trabajador = state.trabajadores.find(t => t.id === trabajadorId);
+            nombreTitulo.innerText = trabajador ? trabajador.nombre : '';
+        } else {
+            nombreTitulo.innerText = '';
+        }
+
+        const inicioMes = state.currentMesAsistencia.startOf('month');
+        const finMes = state.currentMesAsistencia.endOf('month');
+        const diasEnMes = finMes.date();
+        
+        // Calcular espacios vacíos al principio (Lunes = 1, Domingo = 0 -> 7)
+        let diaSemanaInicio = inicioMes.day();
+        diaSemanaInicio = diaSemanaInicio === 0 ? 7 : diaSemanaInicio;
+        
+        let weekCounter = 1;
+        // Insert first week cell
+        let weekCell = document.createElement('div');
+        weekCell.className = 'week-num-cell';
+        weekCell.innerText = weekCounter;
+        grid.appendChild(weekCell);
+
+        for (let i = 1; i < diaSemanaInicio; i++) {
+            const emptyCell = document.createElement('div');
+            emptyCell.className = 'day-cell empty';
+            grid.appendChild(emptyCell);
+        }
+
+        const mesKey = state.currentMesAsistencia.format('YYYY-MM');
+        let diasTrabajados = 0;
+        let colCounter = diaSemanaInicio - 1; // Days filled in first week
+
+        for (let i = 1; i <= diasEnMes; i++) {
+            if (colCounter === 7) {
+                // New row
+                weekCounter++;
+                let newWeekCell = document.createElement('div');
+                newWeekCell.className = 'week-num-cell';
+                newWeekCell.innerText = weekCounter;
+                grid.appendChild(newWeekCell);
+                colCounter = 0;
+            }
+
+            const fecha = inicioMes.date(i);
+            const fechaStr = fecha.format('YYYY-MM-DD');
+            const esDomingo = fecha.day() === 0;
+            const esFeriado = state.feriados[fechaStr];
+            
+            const cell = document.createElement('div');
+            cell.className = 'day-cell';
+            if (esDomingo) cell.classList.add('sunday');
+            if (esFeriado) {
+                cell.classList.add('feriado');
+                cell.title = esFeriado;
+            }
+
+            cell.innerHTML = `<span class="day-number">${i}</span>`;
+            if (esFeriado) {
+                cell.innerHTML += `<div class="feriado-text">${esFeriado}</div>`;
+            }
+
+            // Si hay un trabajador seleccionado, ver si asistió o tuvo adelanto
+            if (trabajadorId) {
+                // Asistencia
+                if (state.asistencia[mesKey] && state.asistencia[mesKey][trabajadorId] && state.asistencia[mesKey][trabajadorId][fechaStr]) {
+                    cell.classList.add('asistio');
+                    const obraId = state.asistencia[mesKey][trabajadorId][fechaStr];
+                    const obra = state.obras.find(o => o.id === obraId);
+                    if (obra) {
+                        cell.innerHTML += `<div class="day-obra">${obra.nombre}</div>`;
+                    } else {
+                        cell.innerHTML += `<div class="day-obra">Obra Desconocida</div>`;
+                    }
+                    diasTrabajados++;
+                }
+                
+                // Adelanto
+                if (state.adelantos[mesKey] && state.adelantos[mesKey][trabajadorId] && state.adelantos[mesKey][trabajadorId][fechaStr]) {
+                    const adData = state.adelantos[mesKey][trabajadorId][fechaStr];
+                    cell.classList.add('adelanto-dia-cell');
+                    cell.innerHTML += `<div class="day-adelanto-badge">-$${adData.monto.toLocaleString('es-CL')}</div>`;
+                }
+                
+                // Nota / Observación
+                if (state.notas[mesKey] && state.notas[mesKey][trabajadorId] && state.notas[mesKey][trabajadorId][fechaStr]) {
+                    cell.innerHTML += `<div style="position: absolute; top: 4px; left: 4px; color: #fbbf24; font-size: 1rem;" title="${state.notas[mesKey][trabajadorId][fechaStr]}"><i class="ph-fill ph-chat-text"></i></div>`;
+                }
+            }
+
+            // Click event para registrar/modificar asistencia
+            cell.onclick = () => {
+                if (!trabajadorId) {
+                    alert("Primero selecciona un trabajador de la lista.");
+                    return;
+                }
+                this.abrirModalAsistenciaDia(fechaStr, mesKey, trabajadorId);
+            };
+
+            grid.appendChild(cell);
+            colCounter++;
+        }
+        
+        while (colCounter < 7) {
+            const emptyCell = document.createElement('div');
+            emptyCell.className = 'day-cell empty';
+            grid.appendChild(emptyCell);
+            colCounter++;
+        }
+
+        // Calcular pago acumulado
+        let pagoTotal = 0;
+        let adelanto = 0;
+        if (trabajadorId) {
+            const t = state.trabajadores.find(x => x.id === trabajadorId);
+            if (t) {
+                pagoTotal = diasTrabajados * t.sueldo;
+            }
+            if(state.adelantos[mesKey] && state.adelantos[mesKey][trabajadorId]) {
+                const diasAdelanto = state.adelantos[mesKey][trabajadorId];
+                for (const f in diasAdelanto) {
+                    adelanto += (diasAdelanto[f].monto || 0);
+                }
+            }
+        }
+        document.getElementById('pago-acumulado-mes').innerText = formatoMoneda.format(pagoTotal);
+        document.getElementById('adelanto-mes-texto').innerText = `-$${adelanto.toLocaleString('es-CL')}`;
+        document.getElementById('pago-final-mes').innerText = formatoMoneda.format(Math.max(0, pagoTotal - adelanto));
+    },
+
+    abrirModalAsistenciaDia: function(fechaStr, mesKey, trabajadorId) {
+        document.getElementById('fecha-seleccionada').value = fechaStr;
+        document.getElementById('texto-fecha-asistencia').innerText = dayjs(fechaStr).format('dddd, D [de] MMMM [de] YYYY').replace(/^\w/, c => c.toUpperCase());
+        
+        const selectObra = document.getElementById('select-obra-dia');
+        const inputAdelanto = document.getElementById('input-adelanto-dia');
+        const infoAdelanto = document.getElementById('info-adelanto-dia');
+        
+        // Ver si ya hay asistencia registrada
+        if (state.asistencia[mesKey] && state.asistencia[mesKey][trabajadorId] && state.asistencia[mesKey][trabajadorId][fechaStr]) {
+            selectObra.value = state.asistencia[mesKey][trabajadorId][fechaStr];
+        } else {
+            selectObra.value = "";
+        }
+        
+        // Ver si hay un adelanto registrado
+        if (state.adelantos[mesKey] && state.adelantos[mesKey][trabajadorId] && state.adelantos[mesKey][trabajadorId][fechaStr]) {
+            const adData = state.adelantos[mesKey][trabajadorId][fechaStr];
+            inputAdelanto.value = adData.monto;
+            infoAdelanto.innerText = `Ingresado el: ${adData.timestamp}`;
+        } else {
+            inputAdelanto.value = "";
+            infoAdelanto.innerText = "";
+        }
+        
+        // Ver si hay una nota registrada
+        const inputNota = document.getElementById('input-nota-dia');
+        if (state.notas[mesKey] && state.notas[mesKey][trabajadorId] && state.notas[mesKey][trabajadorId][fechaStr]) {
+            inputNota.value = state.notas[mesKey][trabajadorId][fechaStr];
+        } else {
+            inputNota.value = "";
+        }
+
+        this.abrirModal('modal-asistencia-dia');
+    },
+
+    guardarAsistenciaDia: function() {
+        const fechaStr = document.getElementById('fecha-seleccionada').value;
+        const obraId = document.getElementById('select-obra-dia').value;
+        const inputAdelanto = document.getElementById('input-adelanto-dia').value;
+        const inputNota = document.getElementById('input-nota-dia').value.trim();
+        const trabajadorId = document.getElementById('select-trabajador-asistencia').value;
+        const mesKey = dayjs(fechaStr).format('YYYY-MM');
+
+        // Guardar Asistencia
+        if (obraId) {
+            if (!state.asistencia[mesKey]) state.asistencia[mesKey] = {};
+            if (!state.asistencia[mesKey][trabajadorId]) state.asistencia[mesKey][trabajadorId] = {};
+            state.asistencia[mesKey][trabajadorId][fechaStr] = obraId;
+        } else {
+            // Si el select está vacío, eliminamos la asistencia de este día
+            if (state.asistencia[mesKey] && state.asistencia[mesKey][trabajadorId]) {
+                delete state.asistencia[mesKey][trabajadorId][fechaStr];
+            }
+        }
+        
+        // Guardar Adelanto
+        if (inputAdelanto && parseInt(inputAdelanto) > 0) {
+            if (!state.adelantos[mesKey]) state.adelantos[mesKey] = {};
+            if (!state.adelantos[mesKey][trabajadorId]) state.adelantos[mesKey][trabajadorId] = {};
+            state.adelantos[mesKey][trabajadorId][fechaStr] = {
+                monto: parseInt(inputAdelanto),
+                timestamp: dayjs().format('DD/MM/YYYY HH:mm:ss')
+            };
+        } else {
+            // Si está vacío, eliminamos el adelanto
+            if (state.adelantos[mesKey] && state.adelantos[mesKey][trabajadorId]) {
+                delete state.adelantos[mesKey][trabajadorId][fechaStr];
+            }
+        }
+        
+        // Guardar Nota
+        if (inputNota) {
+            if (!state.notas[mesKey]) state.notas[mesKey] = {};
+            if (!state.notas[mesKey][trabajadorId]) state.notas[mesKey][trabajadorId] = {};
+            state.notas[mesKey][trabajadorId][fechaStr] = inputNota;
+        } else {
+            if (state.notas[mesKey] && state.notas[mesKey][trabajadorId]) {
+                delete state.notas[mesKey][trabajadorId][fechaStr];
+            }
+        }
+
+        this.guardarDatos('asistencia', state.asistencia);
+        this.guardarDatos('adelantos', state.adelantos);
+        this.guardarDatos('notas', state.notas);
+
+        this.cerrarModal('modal-asistencia-dia');
+        this.renderCalendario();
+        this.updateDashboard();
+    },
+
+    borrarAsistenciaDia: function() {
+        const fechaStr = document.getElementById('fecha-seleccionada').value;
+        const trabajadorId = document.getElementById('select-trabajador-asistencia').value;
+        const mesKey = dayjs(fechaStr).format('YYYY-MM');
+
+        if (state.asistencia[mesKey] && state.asistencia[mesKey][trabajadorId] && state.asistencia[mesKey][trabajadorId][fechaStr]) {
+            delete state.asistencia[mesKey][trabajadorId][fechaStr];
+            this.guardarDatos('asistencia', state.asistencia);
+        }
+        
+        if (state.adelantos[mesKey] && state.adelantos[mesKey][trabajadorId] && state.adelantos[mesKey][trabajadorId][fechaStr]) {
+            delete state.adelantos[mesKey][trabajadorId][fechaStr];
+            this.guardarDatos('adelantos', state.adelantos);
+        }
+        
+        if (state.notas[mesKey] && state.notas[mesKey][trabajadorId] && state.notas[mesKey][trabajadorId][fechaStr]) {
+            delete state.notas[mesKey][trabajadorId][fechaStr];
+            this.guardarDatos('notas', state.notas);
+        }
+
+        this.cerrarModal('modal-asistencia-dia');
+        this.renderCalendario();
+    },
+
+    // --- Asistencia Masiva ---
+    abrirModalAsistenciaMasiva: function() {
+        const selectObra = document.getElementById('select-obra-masiva');
+        selectObra.innerHTML = '<option value="">Seleccione una obra...</option>';
+        state.obras.filter(o => o.estado === 'Activa').forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.id;
+            opt.innerText = o.nombre;
+            selectObra.appendChild(opt);
+        });
+
+        // Configurar fecha por defecto a hoy
+        document.getElementById('fecha-masiva').value = dayjs().format('YYYY-MM-DD');
+
+        // Llenar lista de trabajadores
+        const listaCont = document.getElementById('lista-trabajadores-masiva');
+        listaCont.innerHTML = '';
+        
+        if (state.trabajadores.length === 0) {
+            listaCont.innerHTML = '<p style="color:var(--text-muted); font-size:0.9rem;">No hay trabajadores registrados.</p>';
+        } else {
+            state.trabajadores.forEach(t => {
+                const label = document.createElement('label');
+                label.className = 'checkbox-item';
+                label.innerHTML = `
+                    <input type="checkbox" class="chk-trabajador-masiva" value="${t.id}">
+                    <span>${t.nombre} - ${t.especialidad}</span>
+                `;
+                listaCont.appendChild(label);
+            });
+        }
+
+        this.abrirModal('modal-asistencia-masiva');
+    },
+
+    guardarAsistenciaMasiva: function() {
+        const fechaStr = document.getElementById('fecha-masiva').value;
+        const obraId = document.getElementById('select-obra-masiva').value;
+        const mesKey = dayjs(fechaStr).format('YYYY-MM');
+
+        if (!fechaStr) {
+            alert('Por favor selecciona una fecha.');
+            return;
+        }
+
+        if (!obraId) {
+            alert('Por favor selecciona una obra.');
+            return;
+        }
+
+        const checkboxes = document.querySelectorAll('.chk-trabajador-masiva:checked');
+        if (checkboxes.length === 0) {
+            alert('Por favor selecciona al menos un trabajador.');
+            return;
+        }
+
+        if (!state.asistencia[mesKey]) state.asistencia[mesKey] = {};
+
+        checkboxes.forEach(chk => {
+            const tId = chk.value;
+            if (!state.asistencia[mesKey][tId]) state.asistencia[mesKey][tId] = {};
+            state.asistencia[mesKey][tId][fechaStr] = obraId;
+        });
+
+        this.guardarDatos('asistencia', state.asistencia);
+        this.cerrarModal('modal-asistencia-masiva');
+        this.renderCalendario();
+        this.updateDashboard();
+        
+        alert(`Se guardó la asistencia de ${checkboxes.length} trabajador(es) correctamente.`);
+    }
+};
+
+// Inicializar la aplicación cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', () => {
+    app.init();
+});
