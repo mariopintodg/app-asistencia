@@ -336,7 +336,10 @@ const app = {
                 title: 'Resumen de Asistencia',
                 text: text,
                 url: url
-            }).catch(console.error);
+            }).catch(err => {
+                console.error("Error compartiendo:", err);
+                prompt('Copia este enlace para compartir el resumen:', url);
+            });
         } else {
             prompt('Copia este enlace para compartir el resumen:', url);
         }
@@ -358,9 +361,9 @@ const app = {
                     t: { n: trabajador.nombre, r: trabajador.rut, s: trabajador.sueldo },
                     m: m,
                     y: y,
-                    a: (cloudData.asistencia || {})[wId]?.[dateKey] || {},
-                    ad: (cloudData.adelantos || {})[wId]?.[dateKey] || [],
-                    n: (cloudData.notas || {})[wId]?.[dateKey] || {},
+                    a: (cloudData.asistencia || {})[dateKey]?.[wId] || {},
+                    ad: (cloudData.adelantos || {})[dateKey]?.[wId] || {},
+                    n: (cloudData.notas || {})[dateKey]?.[wId] || {},
                     f: (cloudData.feriados || {})[dateKey] || {}
                 };
                 
@@ -1180,12 +1183,12 @@ const app = {
     },
 
     guardarAsistenciaMasiva: function() {
-        const fechaStr = document.getElementById('fecha-masiva').value;
+        const fechaDesdeStr = document.getElementById('fecha-masiva-desde').value;
+        const fechaHastaStr = document.getElementById('fecha-masiva-hasta').value;
         const obraId = document.getElementById('select-obra-masiva').value;
-        const mesKey = dayjs(fechaStr).format('YYYY-MM');
 
-        if (!fechaStr) {
-            alert('Por favor selecciona una fecha.');
+        if (!fechaDesdeStr || !fechaHastaStr) {
+            alert('Por favor selecciona el rango de fechas (Desde y Hasta).');
             return;
         }
 
@@ -1200,18 +1203,34 @@ const app = {
             return;
         }
 
-        if (!state.asistencia[mesKey]) state.asistencia[mesKey] = {};
+        const fechaInicio = dayjs(fechaDesdeStr);
+        const fechaFin = dayjs(fechaHastaStr);
 
-        checkboxes.forEach(chk => {
-            const tId = chk.value;
-            if (!state.asistencia[mesKey][tId]) state.asistencia[mesKey][tId] = {};
-            state.asistencia[mesKey][tId][fechaStr] = obraId;
-        });
+        if (fechaFin.isBefore(fechaInicio)) {
+            alert('La fecha "Hasta" no puede ser anterior a la fecha "Desde".');
+            return;
+        }
+
+        let currentDate = fechaInicio;
+        while (currentDate.isBefore(fechaFin) || currentDate.isSame(fechaFin, 'day')) {
+            const fechaStr = currentDate.format('YYYY-MM-DD');
+            const mesKey = currentDate.format('YYYY-MM');
+
+            if (!state.asistencia[mesKey]) state.asistencia[mesKey] = {};
+
+            checkboxes.forEach(chk => {
+                const tId = chk.value;
+                if (!state.asistencia[mesKey][tId]) state.asistencia[mesKey][tId] = {};
+                state.asistencia[mesKey][tId][fechaStr] = obraId;
+            });
+            
+            currentDate = currentDate.add(1, 'day');
+        }
 
         this.guardarDatos('asistencia', state.asistencia);
         this.cerrarModal('modal-asistencia-masiva');
-        this.renderCalendario();
         this.updateDashboard();
+        if (state.currentTrabajadorAsistencia) this.renderCalendario(state.currentTrabajadorAsistencia, state.currentMes, state.currentYear);
         
         alert(`Se guardó la asistencia de ${checkboxes.length} trabajador(es) correctamente.`);
     }

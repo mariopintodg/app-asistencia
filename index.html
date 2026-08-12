@@ -444,9 +444,15 @@
                 <button class="icon-btn close-modal" onclick="app.cerrarModal('modal-asistencia-masiva')"><i class="ph ph-x"></i></button>
             </header>
             <div class="modal-body">
-                <div class="input-group">
-                    <label>Fecha de Asistencia:</label>
-                    <input type="date" id="fecha-masiva" required>
+                <div class="input-group" style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label>Desde:</label>
+                        <input type="date" id="fecha-masiva-desde" required>
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Hasta:</label>
+                        <input type="date" id="fecha-masiva-hasta" required>
+                    </div>
                 </div>
                 <div class="input-group">
                     <label>Obra:</label>
@@ -531,7 +537,7 @@
 
     <!-- App Logic -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="app.js?v=25"></script>
+    <script src="app.js?v=26"></script>
     <script>
         // Registrar Service Worker
         if ('serviceWorker' in navigator) {
