@@ -2,6 +2,8 @@
 if (typeof dayjs === 'undefined') { window.dayjs = function() { return { format: () => '2026-08', add: () => window.dayjs(), subtract: () => window.dayjs(), daysInMonth: () => 31, startOf: () => window.dayjs(), day: () => 1 }; }; window.dayjs.locale = function(){}; }
 dayjs.locale('es');
 
+const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
 // Estado Global de la App
 const getLS = (k, d) => { try { const i = localStorage.getItem(k); return i ? JSON.parse(i) : d; } catch(e) { return d; } };
 const state = {
@@ -1236,7 +1238,11 @@ const app = {
     }
 };
 
-// Inicializar la aplicación cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
     app.init();
 });
+
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+    alert("Error JS: " + msg + "\nLinea: " + lineNo);
+    return false;
+};
