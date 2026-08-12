@@ -40,16 +40,38 @@ const formatoMoneda = new Intl.NumberFormat('es-CL', {
     maximumFractionDigits: 0
 });
 
+// Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyCWXglZgC6iuNk2BFuO4-vFX44hSTeDnWY",
+  authDomain: "asistenciaapp-d23b0.firebaseapp.com",
+  projectId: "asistenciaapp-d23b0",
+  storageBucket: "asistenciaapp-d23b0.firebasestorage.app",
+  messagingSenderId: "1097482562782",
+  appId: "1:1097482562782:web:aa1ac1a9a32f2dda83264f"
+};
+if (typeof firebase !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+}
+const db = typeof firebase !== 'undefined' ? firebase.firestore() : null;
+
 // App Controller
 const app = {
     init: function() {
         const urlParams = new URLSearchParams(window.location.search);
-        const resumenData = urlParams.get('resumen');
+        const wId = urlParams.get('worker');
+        const m = parseInt(urlParams.get('m'));
+        const y = parseInt(urlParams.get('y'));
+        const oldLink = urlParams.get('resumen');
         
-        if (resumenData) {
+        if (wId && m && y && db) {
             document.querySelector('.app-container').style.display = 'none';
             document.getElementById('worker-viewer').style.display = 'block';
-            this.renderWorkerSummary(resumenData);
+            this.setupWorkerLiveViewer(wId, m, y);
+            return;
+        } else if (oldLink) {
+            document.querySelector('.app-container').style.display = 'none';
+            document.getElementById('worker-viewer').style.display = 'block';
+            this.renderWorkerSummaryStatic(oldLink);
             return;
         }
 
@@ -255,9 +277,14 @@ const app = {
             f: state.feriados[dateKey] || {}
         };
 
-        const base64Data = btoa(encodeURIComponent(JSON.stringify(data)));
-        const url = `${window.location.origin}${window.location.pathname}?resumen=${base64Data}`;
-        const text = `Hola ${trabajador.nombre}, aquí tienes tu resumen de asistencia de ${meses[state.currentMes - 1]} ${state.currentYear}.`;
+        const text = `Hola ${trabajador.nombre}, aquí puedes ver en vivo tu resumen de asistencia de ${meses[state.currentMes - 1]} ${state.currentYear}.`;
+        let url = '';
+        if (db) {
+            url = `${window.location.origin}${window.location.pathname}?worker=${trabajador.id}&m=${state.currentMes}&y=${state.currentYear}`;
+        } else {
+            const base64Data = btoa(encodeURIComponent(JSON.stringify(data)));
+            url = `${window.location.origin}${window.location.pathname}?resumen=${base64Data}`;
+        }
 
         if (navigator.share) {
             navigator.share({
@@ -270,9 +297,45 @@ const app = {
         }
     },
 
-    renderWorkerSummary: function(base64Data) {
+    setupWorkerLiveViewer: function(wId, m, y) {
+        db.collection('appData').doc('estado').onSnapshot(doc => {
+            if (doc.exists) {
+                const cloudData = doc.data();
+                const dateKey = `${y}-${m}`;
+                const trabajador = (cloudData.trabajadores || []).find(t => t.id === wId);
+                
+                if (!trabajador) {
+                    document.body.innerHTML = "<h2 style='text-align:center; padding: 50px; color:white;'>Trabajador no encontrado.</h2>";
+                    return;
+                }
+
+                const data = {
+                    t: { n: trabajador.nombre, r: trabajador.rut, s: trabajador.sueldo },
+                    m: m,
+                    y: y,
+                    a: (cloudData.asistencia || {})[wId]?.[dateKey] || {},
+                    ad: (cloudData.adelantos || {})[wId]?.[dateKey] || [],
+                    n: (cloudData.notas || {})[wId]?.[dateKey] || {},
+                    f: (cloudData.feriados || {})[dateKey] || {}
+                };
+                
+                this.renderWorkerDOM(data);
+            }
+        });
+    },
+
+    renderWorkerSummaryStatic: function(base64Data) {
         try {
             const data = JSON.parse(decodeURIComponent(atob(base64Data)));
+            this.renderWorkerDOM(data);
+        } catch (e) {
+            console.error("Link inválido", e);
+            document.body.innerHTML = "<h2 style='text-align:center; padding: 50px; color:white;'>El enlace es inválido o está dañado.</h2>";
+        }
+    },
+
+    renderWorkerDOM: function(data) {
+        try {
             
             // Set basic info
             document.getElementById('wv-nombre').innerText = data.t.n;
@@ -629,6 +692,18 @@ const app = {
     // --- Helpers Globales ---
     guardarDatos: function(key, data) {
         localStorage.setItem(key, JSON.stringify(data));
+        
+        if (db) {
+            db.collection('appData').doc('estado').set({
+                trabajadores: state.trabajadores,
+                obras: state.obras,
+                asistencia: state.asistencia,
+                adelantos: state.adelantos,
+                notas: state.notas,
+                feriados: state.feriados
+            }).catch(console.error);
+        }
+
         if(key === 'trabajadores' || key === 'asistencia' || key === 'adelantos') {
             this.updateDashboard();
         }
