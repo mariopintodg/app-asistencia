@@ -354,7 +354,7 @@ const app = {
         db.collection('appData').doc('estado').onSnapshot(doc => {
             if (doc.exists) {
                 const cloudData = doc.data();
-                const dateKey = `${y}-${m}`;
+                const dateKey = `${y}-${String(m).padStart(2, '0')}`;
                 const trabajador = (cloudData.trabajadores || []).find(t => t.id === wId);
                 
                 if (!trabajador) {
@@ -389,22 +389,15 @@ const app = {
 
     renderWorkerDOM: function(data) {
         try {
-            
-            // Set basic info
             document.getElementById('wv-nombre').innerText = data.t.n;
             document.getElementById('wv-rut').innerText = data.t.r;
             document.getElementById('wv-mes').innerText = `${meses[data.m - 1]} ${data.y}`;
             document.getElementById('wv-sueldo-base').innerText = `Basado en ${formatoMoneda.format(data.t.s)} / día`;
 
-            // Calculate totals
-            let diasAsistidos = 0;
+            let diasAsistidos = Object.keys(data.a).length;
             let totalAdelantos = 0;
             
-            Object.values(data.a).forEach(asist => {
-                if (asist.asistio) diasAsistidos++;
-            });
-            
-            data.ad.forEach(adelanto => {
+            Object.values(data.ad).forEach(adelanto => {
                 totalAdelantos += adelanto.monto;
             });
 
@@ -415,7 +408,6 @@ const app = {
             document.getElementById('wv-adelantos').innerText = formatoMoneda.format(totalAdelantos);
             document.getElementById('wv-total').innerText = formatoMoneda.format(totalPagar);
 
-            // Render read-only calendar
             const wvCalendar = document.getElementById('wv-calendar');
             wvCalendar.innerHTML = '';
             
@@ -430,7 +422,6 @@ const app = {
             });
 
             let weekCounter = 1;
-            let currentDay = 1;
             let rowLength = 0;
 
             for (let i = 0; i < startDay; i++) {
@@ -444,14 +435,14 @@ const app = {
                     wvCalendar.innerHTML += `<div class="week-num-cell">${weekCounter}</div>`;
                 }
 
-                const dKey = i.toString();
-                const asist = data.a[dKey];
-                const isFeriado = data.f[dKey];
-                const hasNota = data.n[dKey];
+                const dKey = `${data.y}-${String(data.m).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                const isFeriado = data.f[i.toString()];
+                const hasAsist = !!data.a[dKey];
+                const hasNota = !!data.n[dKey];
 
                 const cell = document.createElement('div');
                 cell.className = 'day-cell wv-day-cell';
-                if (asist && asist.asistio) cell.classList.add('asistio');
+                if (hasAsist) cell.classList.add('asistio');
 
                 let html = `<span class="day-number">${i}</span>`;
                 if (isFeriado) html += `<div class="feriado-text">${isFeriado}</div>`;
@@ -467,13 +458,11 @@ const app = {
                 }
             }
 
-            // Fill remaining cells
             while (rowLength > 0 && rowLength < 7) {
                 wvCalendar.innerHTML += `<div class="day-cell-empty"></div>`;
                 rowLength++;
             }
 
-            // Render notes list
             const notasContainer = document.getElementById('wv-notas-container');
             const notasList = document.getElementById('wv-notas-list');
             
@@ -481,12 +470,15 @@ const app = {
             if (notasKeys.length > 0) {
                 notasContainer.style.display = 'block';
                 notasList.innerHTML = '';
-                notasKeys.forEach(dia => {
+                notasKeys.forEach(dKey => {
                     const el = document.createElement('div');
-                    el.style.cssText = 'padding: 10px; background: rgba(0,0,0,0.2); border-left: 3px solid #eab308; border-radius: 4px; font-size: 0.85rem; color: var(--text-main); line-height: 1.4;';
-                    el.innerHTML = `<strong>Día ${dia}:</strong> ${data.n[dia]}`;
+                    el.style.cssText = 'background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px; font-size: 0.85rem;';
+                    const dia = parseInt(dKey.split('-')[2]);
+                    el.innerHTML = `<strong style="color:var(--text-main); display:block; margin-bottom:3px;">Día ${dia}</strong><span style="color:var(--text-muted);">${data.n[dKey]}</span>`;
                     notasList.appendChild(el);
                 });
+            } else {
+                notasContainer.style.display = 'none';
             }
 
         } catch (e) {
