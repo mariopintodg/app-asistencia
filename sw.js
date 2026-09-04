@@ -1,9 +1,9 @@
-const CACHE_NAME = 'asistencia-app-v55';
+const CACHE_NAME = 'asistencia-app-v56';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './styles.css?v=34',
-  './app.js?v=32',
+  './app.js?v=33',
   './manifest.json',
   './icon.svg',
   './logo-empresa.png',

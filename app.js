@@ -354,6 +354,9 @@ const app = {
         db.collection('appData').doc('estado').onSnapshot(doc => {
             if (doc.exists) {
                 const cloudData = doc.data();
+                window.currentWorkerCloudData = cloudData;
+                window.currentWorkerId = wId;
+                
                 const dateKey = `${y}-${String(m).padStart(2, '0')}`;
                 const trabajador = (cloudData.trabajadores || []).find(t => t.id === wId);
                 
@@ -362,19 +365,66 @@ const app = {
                     return;
                 }
 
+                // Generar opciones de meses (buscar todos los meses donde el trabajador tiene asistencia o adelantos, más el actual)
+                const selector = document.getElementById('wv-mes-selector');
+                selector.innerHTML = '';
+                const mesesDisponibles = new Set();
+                mesesDisponibles.add(dateKey); // Siempre añadir el mes pedido
+                
+                if(cloudData.asistencia) {
+                    Object.keys(cloudData.asistencia).forEach(mk => {
+                        if (cloudData.asistencia[mk][wId]) mesesDisponibles.add(mk);
+                    });
+                }
+                if(cloudData.adelantos) {
+                    Object.keys(cloudData.adelantos).forEach(mk => {
+                        if (cloudData.adelantos[mk][wId]) mesesDisponibles.add(mk);
+                    });
+                }
+                
+                Array.from(mesesDisponibles).sort().reverse().forEach(mk => {
+                    const [yy, mm] = mk.split('-');
+                    const nombreMes = meses[parseInt(mm) - 1];
+                    const opt = document.createElement('option');
+                    opt.value = mk;
+                    opt.innerText = `${nombreMes} ${yy}`;
+                    if (mk === dateKey) opt.selected = true;
+                    selector.appendChild(opt);
+                });
+
                 const data = {
                     t: { n: trabajador.nombre, r: trabajador.rut, s: trabajador.sueldo },
-                    m: m,
-                    y: y,
+                    m: parseInt(m),
+                    y: parseInt(y),
                     a: (cloudData.asistencia || {})[dateKey]?.[wId] || {},
                     ad: (cloudData.adelantos || {})[dateKey]?.[wId] || {},
                     n: (cloudData.notas || {})[dateKey]?.[wId] || {},
-                    f: (cloudData.feriados || {})[dateKey] || {}
+                    f: (cloudData.feriados || {})[dateKey] || {},
+                    o: cloudData.obras || []
                 };
                 
                 this.renderWorkerDOM(data);
             }
         });
+    },
+    
+    cambiarMesWorker: function(mesKey) {
+        const [y, m] = mesKey.split('-');
+        const cloudData = window.currentWorkerCloudData;
+        const wId = window.currentWorkerId;
+        const trabajador = (cloudData.trabajadores || []).find(t => t.id === wId);
+        
+        const data = {
+            t: { n: trabajador.nombre, r: trabajador.rut, s: trabajador.sueldo },
+            m: parseInt(m),
+            y: parseInt(y),
+            a: (cloudData.asistencia || {})[mesKey]?.[wId] || {},
+            ad: (cloudData.adelantos || {})[mesKey]?.[wId] || {},
+            n: (cloudData.notas || {})[mesKey]?.[wId] || {},
+            f: (cloudData.feriados || {})[mesKey] || {},
+            o: cloudData.obras || []
+        };
+        this.renderWorkerDOM(data);
     },
 
     renderWorkerSummaryStatic: function(base64Data) {
@@ -391,7 +441,7 @@ const app = {
         try {
             document.getElementById('wv-nombre').innerText = data.t.n;
             document.getElementById('wv-rut').innerText = data.t.r;
-            document.getElementById('wv-mes').innerText = `${meses[data.m - 1]} ${data.y}`;
+            // wv-mes se quitó del HTML
             document.getElementById('wv-sueldo-base').innerText = `Basado en ${formatoMoneda.format(data.t.s)} / día`;
 
             let diasAsistidos = Object.keys(data.a).length;
@@ -446,6 +496,13 @@ const app = {
 
                 let html = `<span class="day-number">${i}</span>`;
                 if (isFeriado) html += `<div class="feriado-text">${isFeriado}</div>`;
+                if (hasAsist) {
+                    const obraId = data.a[dKey];
+                    const obra = (data.o || []).find(ob => ob.id === obraId);
+                    const obraNombre = obra ? obra.nombre : 'Obra';
+                    html += `<div class="day-obra" style="font-size: 0.65rem; color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.15); border-radius: 4px; padding: 2px 4px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1;">${obraNombre}</div>`;
+                }
+                
                 if (hasNota) html += `<i class="ph-fill ph-chat-text note-indicator" style="position: absolute; top: 4px; right: 4px; color: #eab308; font-size: 1rem;"></i>`;
                 
                 cell.innerHTML = html;
@@ -577,77 +634,110 @@ const app = {
         document.getElementById('report-period-text').innerText = "Período: " + mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
         document.getElementById('report-print-date').innerText = "Generado el: " + dayjs().format('DD/MM/YYYY HH:mm');
 
+        const tipoSelect = document.getElementById('tipo-reporte');
+        const obraSelect = document.getElementById('filtro-reporte-obra');
+        const trabajadorSelect = document.getElementById('filtro-reporte-trabajador');
+        
+        if (!tipoSelect) return;
+
+        const tipo = tipoSelect.value;
         const mesKey = state.currentMesAsistencia.format('YYYY-MM');
-        
-        let totalPagar = 0;
-        let obrasActivasSet = new Set();
-        let trabajadoresActivos = 0;
-        let reportHTML = '';
-        let costoPorObra = {};
-
         const asistenciaMes = state.asistencia[mesKey] || {};
-        
-        // Inicializar costos
-        state.obras.filter(o => o.estado === 'Activa').forEach(o => {
-            costoPorObra[o.id] = { nombre: o.nombre, total: 0, dias: 0 };
-        });
 
-        state.trabajadores.forEach(trabajador => {
-            const diasTrabajados = Object.keys(asistenciaMes[trabajador.id] || {}).length;
-            if (diasTrabajados > 0) {
-                trabajadoresActivos++;
-                
-                let adelanto = 0;
-                if(state.adelantos[mesKey] && state.adelantos[mesKey][trabajador.id]) {
-                    const diasAdelanto = state.adelantos[mesKey][trabajador.id];
-                    for (const f in diasAdelanto) {
-                        adelanto += (diasAdelanto[f].monto || 0);
+        // Actualizar opciones de filtros secundarios
+        if (tipo === 'general') {
+            obraSelect.style.display = 'none';
+            trabajadorSelect.style.display = 'none';
+        } else if (tipo === 'obra') {
+            obraSelect.style.display = 'inline-block';
+            trabajadorSelect.style.display = 'none';
+            
+            // Llenar obras activas si está vacío
+            if (obraSelect.options.length <= 1) {
+                state.obras.forEach(o => {
+                    if(o.estado === 'Activa') {
+                        const opt = document.createElement('option');
+                        opt.value = o.id;
+                        opt.innerText = o.nombre;
+                        obraSelect.appendChild(opt);
                     }
-                }
-                
-                const montoPagar = (diasTrabajados * trabajador.sueldo) - adelanto;
-                totalPagar += montoPagar;
-                
-                // Recolectar obras de este trabajador este mes
-                const obrasDelTrabajador = new Set();
-                for (const fecha in asistenciaMes[trabajador.id]) {
-                    const obraId = asistenciaMes[trabajador.id][fecha];
-                    const obra = state.obras.find(o => o.id === obraId);
-                    if (obra) {
-                        obrasDelTrabajador.add(obra.nombre);
-                        obrasActivasSet.add(obra.id);
-                        if (costoPorObra[obraId]) {
-                            costoPorObra[obraId].total += trabajador.sueldo;
-                            costoPorObra[obraId].dias += 1;
-                        }
-                    }
-                }
-
-                reportHTML += `
-                    <tr>
-                        <td>${trabajador.nombre}</td>
-                        <td style="text-align: center;">${diasTrabajados}</td>
-                        <td>${Array.from(obrasDelTrabajador).join(', ')}</td>
-                        <td style="text-align: right; color: var(--danger);">-$${adelanto.toLocaleString('es-CL')}</td>
-                        <td style="text-align: right;">$${montoPagar.toLocaleString('es-CL')}</td>
-                    </tr>
-                `;
+                });
             }
-        });
-
-        if (trabajadoresActivos === 0) {
-            reportHTML = `<tr><td colspan="5" class="empty-state-cell" style="text-align: center;">No hay asistencias registradas en este mes.</td></tr>`;
+        } else if (tipo === 'trabajador') {
+            obraSelect.style.display = 'none';
+            trabajadorSelect.style.display = 'inline-block';
+            
+            if (trabajadorSelect.options.length <= 1) {
+                state.trabajadores.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.innerText = t.nombre;
+                    trabajadorSelect.appendChild(opt);
+                });
+            }
         }
 
-        document.getElementById('report-tot-trabajadores').innerText = trabajadoresActivos;
-        document.getElementById('report-tot-obras').innerText = obrasActivasSet.size;
-        document.getElementById('report-tot-pagar').innerText = '$' + totalPagar.toLocaleString('es-CL');
-        document.getElementById('report-table-body').innerHTML = reportHTML;
-        
-        // Renderizar segunda tabla (Desglose por Obra)
-        let obrasHTML = '';
-        Object.values(costoPorObra).forEach(obraData => {
-            if (obraData.total > 0 || true) { // Se muestran todas las activas
+        let html = '';
+
+        if (tipo === 'general') {
+            let totalPagar = 0;
+            let obrasActivasSet = new Set();
+            let trabajadoresActivos = 0;
+            let reportHTML = '';
+            let costoPorObra = {};
+
+            state.obras.filter(o => o.estado === 'Activa').forEach(o => {
+                costoPorObra[o.id] = { nombre: o.nombre, total: 0, dias: 0 };
+            });
+
+            state.trabajadores.forEach(trabajador => {
+                const diasTrabajados = Object.keys(asistenciaMes[trabajador.id] || {}).length;
+                if (diasTrabajados > 0) {
+                    trabajadoresActivos++;
+                    
+                    let adelanto = 0;
+                    if(state.adelantos[mesKey] && state.adelantos[mesKey][trabajador.id]) {
+                        const diasAdelanto = state.adelantos[mesKey][trabajador.id];
+                        for (const f in diasAdelanto) {
+                            adelanto += (diasAdelanto[f].monto || 0);
+                        }
+                    }
+                    
+                    const montoPagar = (diasTrabajados * trabajador.sueldo) - adelanto;
+                    totalPagar += montoPagar;
+                    
+                    const obrasDelTrabajador = new Set();
+                    for (const fecha in asistenciaMes[trabajador.id]) {
+                        const obraId = asistenciaMes[trabajador.id][fecha];
+                        const obra = state.obras.find(o => o.id === obraId);
+                        if (obra) {
+                            obrasDelTrabajador.add(obra.nombre);
+                            obrasActivasSet.add(obra.id);
+                            if (costoPorObra[obraId]) {
+                                costoPorObra[obraId].total += trabajador.sueldo;
+                                costoPorObra[obraId].dias += 1;
+                            }
+                        }
+                    }
+
+                    reportHTML += `
+                        <tr>
+                            <td>${trabajador.nombre}</td>
+                            <td style="text-align: center;">${diasTrabajados}</td>
+                            <td>${Array.from(obrasDelTrabajador).join(', ')}</td>
+                            <td style="text-align: right; color: var(--danger);">-$${adelanto.toLocaleString('es-CL')}</td>
+                            <td style="text-align: right;">$${montoPagar.toLocaleString('es-CL')}</td>
+                        </tr>
+                    `;
+                }
+            });
+
+            if (trabajadoresActivos === 0) {
+                reportHTML = `<tr><td colspan="5" class="empty-state-cell" style="text-align: center;">No hay asistencias registradas en este mes.</td></tr>`;
+            }
+
+            let obrasHTML = '';
+            Object.values(costoPorObra).forEach(obraData => {
                 obrasHTML += `
                     <tr>
                         <td>${obraData.nombre}</td>
@@ -655,40 +745,214 @@ const app = {
                         <td style="text-align: right;">$${obraData.total.toLocaleString('es-CL')}</td>
                     </tr>
                 `;
+            });
+
+            let notasHTML = '';
+            if (state.notas[mesKey]) {
+                Object.keys(state.notas[mesKey]).forEach(tId => {
+                    const trabajador = state.trabajadores.find(t => t.id === tId);
+                    const nombreT = trabajador ? trabajador.nombre : 'Desconocido';
+                    
+                    const diasNotas = state.notas[mesKey][tId];
+                    Object.keys(diasNotas).forEach(fecha => {
+                        const nota = diasNotas[fecha];
+                        if (nota) {
+                            notasHTML += `
+                                <tr>
+                                    <td>${dayjs(fecha).format('DD/MM/YYYY')}</td>
+                                    <td>${nombreT}</td>
+                                    <td>${nota}</td>
+                                </tr>
+                            `;
+                        }
+                    });
+                });
             }
-        });
-        document.getElementById('report-table-obras-body').innerHTML = obrasHTML;
-        
-        // Renderizar tercera tabla (Observaciones)
-        let notasHTML = '';
-        const contenedorNotas = document.getElementById('contenedor-reporte-notas');
-        if (state.notas[mesKey]) {
-            Object.keys(state.notas[mesKey]).forEach(tId => {
-                const trabajador = state.trabajadores.find(t => t.id === tId);
-                const nombreT = trabajador ? trabajador.nombre : 'Desconocido';
+
+            html = `
+                <div class="report-metrics">
+                    <div class="report-metric">
+                        <span class="metric-label">Trabajadores Activos</span>
+                        <span class="metric-val">${trabajadoresActivos}</span>
+                    </div>
+                    <div class="report-metric">
+                        <span class="metric-label">Obras Activas</span>
+                        <span class="metric-val">${obrasActivasSet.size}</span>
+                    </div>
+                    <div class="report-metric highlight">
+                        <span class="metric-label">Total a Pagar</span>
+                        <span class="metric-val">$${totalPagar.toLocaleString('es-CL')}</span>
+                    </div>
+                </div>
                 
-                const diasNotas = state.notas[mesKey][tId];
-                Object.keys(diasNotas).forEach(fecha => {
-                    const nota = diasNotas[fecha];
-                    if (nota) {
-                        notasHTML += `
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>Trabajador</th>
+                            <th style="text-align: center;">Jornadas Trabajadas</th>
+                            <th>Obras Involucradas</th>
+                            <th style="text-align: right;">Adelantos</th>
+                            <th style="text-align: right;">Total a Pagar</th>
+                        </tr>
+                    </thead>
+                    <tbody>${reportHTML}</tbody>
+                </table>
+                
+                <div style="margin-top: 20px;">
+                    <h3 style="color: #1a237e; font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">Desglose de Mano de Obra por Partida</h3>
+                    <table class="report-table" style="width: 100%;">
+                        <thead>
                             <tr>
-                                <td>${dayjs(fecha).format('DD/MM/YYYY')}</td>
-                                <td>${nombreT}</td>
-                                <td>${nota}</td>
+                                <th>Obra</th>
+                                <th style="width: 120px; text-align: center;">Jornadas</th>
+                                <th style="width: 120px; text-align: right;">Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody>${obrasHTML}</tbody>
+                    </table>
+                </div>
+                
+                ${notasHTML ? `
+                <div style="margin-top: 20px;">
+                    <h3 style="color: #1a237e; font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">Observaciones del Mes</h3>
+                    <table class="report-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="width: 100px;">Fecha</th>
+                                <th style="width: 150px;">Trabajador</th>
+                                <th>Observación / Nota</th>
+                            </tr>
+                        </thead>
+                        <tbody>${notasHTML}</tbody>
+                    </table>
+                </div>` : ''}
+            `;
+            
+        } else if (tipo === 'obra') {
+            const oId = obraSelect.value;
+            if (!oId) {
+                html = `<p style="text-align:center; padding: 20px;">Por favor, seleccione una obra.</p>`;
+            } else {
+                const obra = state.obras.find(o => o.id === oId);
+                let rows = '';
+                let totalJornadas = 0;
+                let costoTotal = 0;
+                
+                state.trabajadores.forEach(t => {
+                    const diasTrab = asistenciaMes[t.id] || {};
+                    let jornadasTrabajador = 0;
+                    let fechasTrabajador = [];
+                    
+                    for (const fecha in diasTrab) {
+                        if (diasTrab[fecha] === oId) {
+                            jornadasTrabajador++;
+                            fechasTrabajador.push(dayjs(fecha).format('DD/MM/YYYY'));
+                            totalJornadas++;
+                            costoTotal += t.sueldo;
+                        }
+                    }
+                    
+                    if (jornadasTrabajador > 0) {
+                        fechasTrabajador.sort();
+                        rows += `
+                            <tr>
+                                <td>${t.nombre}</td>
+                                <td style="text-align:center;">${jornadasTrabajador}</td>
+                                <td style="font-size:0.85rem; color: #555;">${fechasTrabajador.join(', ')}</td>
+                                <td style="text-align:right;">$${(jornadasTrabajador * t.sueldo).toLocaleString('es-CL')}</td>
                             </tr>
                         `;
                     }
                 });
-            });
+                
+                if (!rows) rows = `<tr><td colspan="4" style="text-align:center;">Nadie trabajó en esta obra durante el mes.</td></tr>`;
+                
+                html = `
+                    <div class="report-metrics">
+                        <div class="report-metric">
+                            <span class="metric-label">Obra</span>
+                            <span class="metric-val" style="font-size: 1.1rem;">${obra ? obra.nombre : ''}</span>
+                        </div>
+                        <div class="report-metric">
+                            <span class="metric-label">Total Jornadas</span>
+                            <span class="metric-val">${totalJornadas}</span>
+                        </div>
+                        <div class="report-metric highlight">
+                            <span class="metric-label">Costo Mano de Obra</span>
+                            <span class="metric-val">$${costoTotal.toLocaleString('es-CL')}</span>
+                        </div>
+                    </div>
+                    
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Trabajador</th>
+                                <th style="text-align: center; width: 100px;">Jornadas</th>
+                                <th>Fechas Trabajadas</th>
+                                <th style="text-align: right; width: 120px;">Costo</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `;
+            }
+        } else if (tipo === 'trabajador') {
+            const tId = trabajadorSelect.value;
+            if (!tId) {
+                html = `<p style="text-align:center; padding: 20px;">Por favor, seleccione un trabajador.</p>`;
+            } else {
+                const trabajador = state.trabajadores.find(t => t.id === tId);
+                const diasTrab = asistenciaMes[tId] || {};
+                let rows = '';
+                let totalJornadas = 0;
+                
+                const fechas = Object.keys(diasTrab).sort();
+                fechas.forEach(fecha => {
+                    const obraId = diasTrab[fecha];
+                    const obra = state.obras.find(o => o.id === obraId);
+                    totalJornadas++;
+                    rows += `
+                        <tr>
+                            <td style="width:120px;">${dayjs(fecha).format('DD/MM/YYYY')}</td>
+                            <td>${dayjs(fecha).format('dddd').charAt(0).toUpperCase() + dayjs(fecha).format('dddd').slice(1)}</td>
+                            <td>${obra ? obra.nombre : 'Desconocida'}</td>
+                        </tr>
+                    `;
+                });
+                
+                if (!rows) rows = `<tr><td colspan="3" style="text-align:center;">El trabajador no registra asistencia este mes.</td></tr>`;
+                
+                html = `
+                    <div class="report-metrics">
+                        <div class="report-metric">
+                            <span class="metric-label">Trabajador</span>
+                            <span class="metric-val" style="font-size: 1.1rem;">${trabajador ? trabajador.nombre : ''}</span>
+                        </div>
+                        <div class="report-metric">
+                            <span class="metric-label">Jornadas Totales</span>
+                            <span class="metric-val">${totalJornadas}</span>
+                        </div>
+                        <div class="report-metric highlight">
+                            <span class="metric-label">Base Mensual</span>
+                            <span class="metric-val">$${trabajador ? (totalJornadas * trabajador.sueldo).toLocaleString('es-CL') : 0}</span>
+                        </div>
+                    </div>
+                    
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Día</th>
+                                <th>Obra Asignada</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `;
+            }
         }
-        
-        if (notasHTML === '') {
-            contenedorNotas.style.display = 'none';
-        } else {
-            contenedorNotas.style.display = 'block';
-            document.getElementById('report-table-notas-body').innerHTML = notasHTML;
-        }
+
+        document.getElementById('report-dynamic-content').innerHTML = html;
     },
 
     exportarPDF: function() {

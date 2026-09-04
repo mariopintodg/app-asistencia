@@ -235,8 +235,8 @@
             <section id="view-reportes" class="view-section">
                 <header class="section-header">
                     <div>
-                        <h1>Reporte Mensual</h1>
-                        <p class="subtitle">Genera un resumen general del mes para imprimir o exportar a PDF</p>
+                        <h1>Reportes</h1>
+                        <p class="subtitle">Genera reportes de costos, obras y asistencia de trabajadores</p>
                     </div>
                     <div class="header-actions">
                         <button class="btn btn-secondary" onclick="app.cambiarMesReporte(-1)"><i class="ph ph-caret-left"></i></button>
@@ -245,6 +245,22 @@
                         <button class="btn btn-primary" onclick="app.exportarPDF()"><i class="ph ph-download"></i> Exportar a PDF</button>
                     </div>
                 </header>
+
+                <div class="report-filters" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <select id="tipo-reporte" onchange="app.renderReporte()" class="form-control" style="width: auto; padding-right: 30px;">
+                        <option value="general">Resumen General</option>
+                        <option value="obra">Detalle por Obra</option>
+                        <option value="trabajador">Detalle por Trabajador</option>
+                    </select>
+                    
+                    <select id="filtro-reporte-obra" onchange="app.renderReporte()" class="form-control" style="display: none; width: auto; padding-right: 30px;">
+                        <option value="">Seleccione una Obra...</option>
+                    </select>
+                    
+                    <select id="filtro-reporte-trabajador" onchange="app.renderReporte()" class="form-control" style="display: none; width: auto; padding-right: 30px;">
+                        <option value="">Seleccione un Trabajador...</option>
+                    </select>
+                </div>
 
                 <div class="card" style="padding: 24px; overflow-x: auto;">
                     <!-- Contenedor que se exportará a PDF -->
@@ -255,66 +271,8 @@
                             <p class="report-period" id="report-period-text">Período: Agosto 2026</p>
                         </div>
 
-                        <div class="report-metrics">
-                            <div class="report-metric">
-                                <span class="metric-label">Trabajadores Activos</span>
-                                <span class="metric-val" id="report-tot-trabajadores">0</span>
-                            </div>
-                            <div class="report-metric">
-                                <span class="metric-label">Obras Activas</span>
-                                <span class="metric-val" id="report-tot-obras">0</span>
-                            </div>
-                            <div class="report-metric highlight">
-                                <span class="metric-label">Total a Pagar</span>
-                                <span class="metric-val" id="report-tot-pagar">$0</span>
-                            </div>
-                        </div>
-
-                        <table class="report-table">
-                            <thead>
-                                <tr>
-                                    <th>Trabajador</th>
-                                    <th style="text-align: center;">Días Trabajados</th>
-                                    <th>Obras Involucradas</th>
-                                    <th style="text-align: right;">Adelantos</th>
-                                    <th style="text-align: right;">Total a Pagar</th>
-                                </tr>
-                            </thead>
-                            <tbody id="report-table-body">
-                                <!-- Filas generadas por JS -->
-                            </tbody>
-                        </table>
-
-                        <div style="margin-top: 20px;">
-                            <h3 style="color: #1a237e; font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">Desglose de Mano de Obra por Partida</h3>
-                            <table class="report-table" style="width: 100%;">
-                                <thead>
-                                    <tr>
-                                        <th>Obra</th>
-                                        <th style="width: 80px; text-align: center;">Días</th>
-                                        <th style="width: 120px; text-align: right;">Costo</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="report-table-obras-body">
-                                    <!-- Filas generadas por JS -->
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div style="margin-top: 20px;" id="contenedor-reporte-notas">
-                            <h3 style="color: #1a237e; font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px;">Observaciones del Mes</h3>
-                            <table class="report-table" style="width: 100%;">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 100px;">Fecha</th>
-                                        <th style="width: 150px;">Trabajador</th>
-                                        <th>Observación / Nota</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="report-table-notas-body">
-                                    <!-- Filas generadas por JS -->
-                                </tbody>
-                            </table>
+                        <div id="report-dynamic-content">
+                            <!-- Contenido dinámico del reporte generado por JS -->
                         </div>
 
                         <div class="report-footer-print mt-5">
@@ -490,8 +448,9 @@
                 </div>
                 <h2 id="wv-nombre" style="font-size: 1.5rem; margin-bottom: 5px; color: var(--text-main);">Nombre</h2>
                 <p id="wv-rut" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 15px;">RUT</p>
-                <div style="display: inline-block; background: rgba(255,255,255,0.05); border-radius: 100px; padding: 5px 15px; font-weight: 600; font-size: 0.85rem; color: var(--primary);">
-                    Resumen <span id="wv-mes">Mes</span>
+                <div style="margin-bottom: 15px;">
+                    <select id="wv-mes-selector" style="background: rgba(59, 130, 246, 0.1); color: var(--primary); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 100px; padding: 6px 15px; font-weight: 600; font-size: 0.85rem; outline: none; cursor: pointer;" onchange="app.cambiarMesWorker(this.value)">
+                    </select>
                 </div>
             </div>
 
@@ -537,7 +496,7 @@
 
     <!-- App Logic -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="app.js?v=32"></script>
+    <script src="app.js?v=33"></script>
     <script>
         // Registrar Service Worker
         if ('serviceWorker' in navigator) {
