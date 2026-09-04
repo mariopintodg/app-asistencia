@@ -9,7 +9,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="icon.svg">
     <title>Asistencia de Obras</title>
-    <link rel="stylesheet" href="styles.css?v=34">
+    <link rel="stylesheet" href="styles.css?v=35">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Iconos Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -246,18 +246,18 @@
                     </div>
                 </header>
 
-                <div class="report-filters" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                    <select id="tipo-reporte" onchange="app.renderReporte()" class="form-control" style="width: auto; padding-right: 30px;">
-                        <option value="general">Resumen General</option>
-                        <option value="obra">Detalle por Obra</option>
-                        <option value="trabajador">Detalle por Trabajador</option>
+                <div class="report-filters" style="margin-bottom: 25px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; background: rgba(0,0,0,0.2); padding: 15px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
+                    <select id="tipo-reporte" onchange="app.renderReporte()" class="glass-select" style="min-width: 220px;">
+                        <option value="general">📊 Resumen General</option>
+                        <option value="obra">🏗️ Detalle por Obra</option>
+                        <option value="trabajador">👷 Detalle por Trabajador</option>
                     </select>
                     
-                    <select id="filtro-reporte-obra" onchange="app.renderReporte()" class="form-control" style="display: none; width: auto; padding-right: 30px;">
+                    <select id="filtro-reporte-obra" onchange="app.renderReporte()" class="glass-select" style="display: none; min-width: 250px;">
                         <option value="">Seleccione una Obra...</option>
                     </select>
                     
-                    <select id="filtro-reporte-trabajador" onchange="app.renderReporte()" class="form-control" style="display: none; width: auto; padding-right: 30px;">
+                    <select id="filtro-reporte-trabajador" onchange="app.renderReporte()" class="glass-select" style="display: none; min-width: 250px;">
                         <option value="">Seleccione un Trabajador...</option>
                     </select>
                 </div>
@@ -496,7 +496,7 @@
 
     <!-- App Logic -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="app.js?v=33"></script>
+    <script src="app.js?v=34"></script>
     <script>
         // Registrar Service Worker
         if ('serviceWorker' in navigator) {
