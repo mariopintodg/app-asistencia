@@ -645,27 +645,47 @@ const app = {
         const asistenciaMes = state.asistencia[mesKey] || {};
 
         // Actualizar opciones de filtros secundarios
+        const filtroMesesContainer = document.getElementById('filtro-reporte-meses');
+        
         if (tipo === 'general') {
             obraSelect.style.display = 'none';
             trabajadorSelect.style.display = 'none';
-        } else if (tipo === 'obra') {
+            if(filtroMesesContainer) filtroMesesContainer.style.display = 'none';
+        } else if (tipo === 'obra' || tipo === 'obra-historico') {
             obraSelect.style.display = 'inline-block';
             trabajadorSelect.style.display = 'none';
+            if(filtroMesesContainer) filtroMesesContainer.style.display = tipo === 'obra-historico' ? 'flex' : 'none';
             
-            // Llenar obras activas si está vacío
+            // Llenar obras si está vacío
             if (obraSelect.options.length <= 1) {
                 state.obras.forEach(o => {
-                    if(o.estado === 'Activa') {
-                        const opt = document.createElement('option');
-                        opt.value = o.id;
-                        opt.innerText = o.nombre;
-                        obraSelect.appendChild(opt);
-                    }
+                    const opt = document.createElement('option');
+                    opt.value = o.id;
+                    opt.innerText = o.nombre + (o.estado === 'Activa' ? '' : ' (Inactiva)');
+                    obraSelect.appendChild(opt);
                 });
+            }
+            
+            // Si es histórico, generar checkboxes de meses si no existen
+            if (tipo === 'obra-historico' && filtroMesesContainer && filtroMesesContainer.innerHTML.trim() === '') {
+                const mesesDisponibles = Object.keys(state.asistencia || {}).sort().reverse();
+                let chkHtml = '<span style="color: var(--text-muted); font-size: 0.9rem;">Meses a incluir:</span>';
+                mesesDisponibles.forEach(mk => {
+                    const [yy, mm] = mk.split('-');
+                    const nom = meses[parseInt(mm)-1] + ' ' + yy;
+                    chkHtml += `
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.9rem; cursor: pointer;">
+                            <input type="checkbox" class="chk-mes-historico" value="${mk}" checked onchange="app.renderReporte()">
+                            ${nom}
+                        </label>
+                    `;
+                });
+                filtroMesesContainer.innerHTML = chkHtml;
             }
         } else if (tipo === 'trabajador') {
             obraSelect.style.display = 'none';
             trabajadorSelect.style.display = 'inline-block';
+            if(filtroMesesContainer) filtroMesesContainer.style.display = 'none';
             
             if (trabajadorSelect.options.length <= 1) {
                 state.trabajadores.forEach(t => {
@@ -944,6 +964,84 @@ const app = {
                                 <th>Fecha</th>
                                 <th>Día</th>
                                 <th>Obra Asignada</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `;
+            }
+        } else if (tipo === 'obra-historico') {
+            const oId = obraSelect.value;
+            if (!oId) {
+                html = `<p style="text-align:center; padding: 20px;">Por favor, seleccione una obra.</p>`;
+            } else {
+                const obra = state.obras.find(o => o.id === oId);
+                let rows = '';
+                let totalJornadas = 0;
+                let costoTotal = 0;
+                
+                // Extraer los meses seleccionados en los checkboxes
+                const chkMeses = Array.from(document.querySelectorAll('.chk-mes-historico:checked')).map(chk => chk.value);
+                
+                state.trabajadores.forEach(t => {
+                    let jornadasTrabajador = 0;
+                    let desgloseMeses = {}; // Para mostrar resumen por mes
+                    
+                    chkMeses.forEach(mk => {
+                        const diasTrab = (state.asistencia[mk] || {})[t.id] || {};
+                        let subJornadas = 0;
+                        for (const fecha in diasTrab) {
+                            if (diasTrab[fecha] === oId) subJornadas++;
+                        }
+                        if (subJornadas > 0) {
+                            jornadasTrabajador += subJornadas;
+                            const nom = meses[parseInt(mk.split('-')[1])-1] + ' ' + mk.split('-')[0];
+                            desgloseMeses[nom] = subJornadas;
+                        }
+                    });
+
+                    if (jornadasTrabajador > 0) {
+                        totalJornadas += jornadasTrabajador;
+                        costoTotal += (jornadasTrabajador * t.sueldo);
+                        
+                        let txtMeses = Object.keys(desgloseMeses).map(k => `${k}: ${desgloseMeses[k]} jorn.`).join('<br>');
+                        
+                        rows += `
+                            <tr>
+                                <td>${t.nombre}</td>
+                                <td style="text-align:center;">${jornadasTrabajador}</td>
+                                <td style="font-size:0.85rem; color: #aaa;">${txtMeses}</td>
+                                <td style="text-align:right;">$${(jornadasTrabajador * t.sueldo).toLocaleString('es-CL')}</td>
+                            </tr>
+                        `;
+                    }
+                });
+                
+                if (!rows) rows = `<tr><td colspan="4" style="text-align:center;">Nadie ha trabajado en esta obra en los meses seleccionados.</td></tr>`;
+                
+                html = `
+                    <div class="report-metrics" style="background: rgba(30,30,50,0.5);">
+                        <div class="report-metric">
+                            <span class="metric-label" style="color: #60a5fa;">Obra (Histórico)</span>
+                            <span class="metric-val" style="font-size: 1.1rem;">${obra ? obra.nombre : ''}</span>
+                        </div>
+                        <div class="report-metric">
+                            <span class="metric-label">Jornadas Acumuladas</span>
+                            <span class="metric-val">${totalJornadas}</span>
+                        </div>
+                        <div class="report-metric highlight">
+                            <span class="metric-label">Costo Histórico Total</span>
+                            <span class="metric-val">$${costoTotal.toLocaleString('es-CL')}</span>
+                        </div>
+                    </div>
+                    
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Trabajador</th>
+                                <th style="text-align: center; width: 100px;">Jornadas Totales</th>
+                                <th>Desglose por Mes</th>
+                                <th style="text-align: right; width: 120px;">Costo Generado</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>

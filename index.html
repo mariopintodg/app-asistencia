@@ -249,8 +249,9 @@
                 <div class="report-filters" style="margin-bottom: 25px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; background: rgba(0,0,0,0.2); padding: 15px; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.05);">
                     <select id="tipo-reporte" onchange="app.renderReporte()" class="glass-select" style="min-width: 220px;">
                         <option value="general">📊 Resumen General</option>
-                        <option value="obra">🏗️ Detalle por Obra</option>
+                        <option value="obra">🏗️ Detalle por Obra (Mes)</option>
                         <option value="trabajador">👷 Detalle por Trabajador</option>
+                        <option value="obra-historico">📈 Histórico de Obra</option>
                     </select>
                     
                     <select id="filtro-reporte-obra" onchange="app.renderReporte()" class="glass-select" style="display: none; min-width: 250px;">
@@ -260,6 +261,10 @@
                     <select id="filtro-reporte-trabajador" onchange="app.renderReporte()" class="glass-select" style="display: none; min-width: 250px;">
                         <option value="">Seleccione un Trabajador...</option>
                     </select>
+                    
+                    <div id="filtro-reporte-meses" style="display: none; width: 100%; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+                        <!-- Checkboxes de meses generados por JS -->
+                    </div>
                 </div>
 
                 <div class="card" style="padding: 24px; overflow-x: auto;">
@@ -496,7 +501,7 @@
 
     <!-- App Logic -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="app.js?v=34"></script>
+    <script src="app.js?v=36"></script>
     <script>
         // Registrar Service Worker
         if ('serviceWorker' in navigator) {
