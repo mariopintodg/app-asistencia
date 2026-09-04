@@ -631,7 +631,6 @@ const app = {
     renderReporte: function() {
         const mesTexto = state.currentMesAsistencia.format('MMMM YYYY');
         document.getElementById('mes-reporte-actual').innerText = mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
-        document.getElementById('report-period-text').innerText = "Período: " + mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
         document.getElementById('report-print-date').innerText = "Generado el: " + dayjs().format('DD/MM/YYYY HH:mm');
 
         const tipoSelect = document.getElementById('tipo-reporte');
@@ -644,6 +643,12 @@ const app = {
         const mesKey = state.currentMesAsistencia.format('YYYY-MM');
         const asistenciaMes = state.asistencia[mesKey] || {};
 
+        if (tipo === 'obra-historico') {
+            document.getElementById('report-period-text').innerText = "Período: Histórico Acumulado";
+        } else {
+            document.getElementById('report-period-text').innerText = "Período: " + mesTexto.charAt(0).toUpperCase() + mesTexto.slice(1);
+        }
+
         // Actualizar opciones de filtros secundarios
         const filtroMesesContainer = document.getElementById('filtro-reporte-meses');
         
@@ -654,7 +659,6 @@ const app = {
         } else if (tipo === 'obra' || tipo === 'obra-historico') {
             obraSelect.style.display = 'inline-block';
             trabajadorSelect.style.display = 'none';
-            if(filtroMesesContainer) filtroMesesContainer.style.display = tipo === 'obra-historico' ? 'flex' : 'none';
             
             // Llenar obras si está vacío
             if (obraSelect.options.length <= 1) {
@@ -666,21 +670,33 @@ const app = {
                 });
             }
             
-            // Si es histórico, generar checkboxes de meses si no existen
-            if (tipo === 'obra-historico' && filtroMesesContainer && filtroMesesContainer.innerHTML.trim() === '') {
-                const mesesDisponibles = Object.keys(state.asistencia || {}).sort().reverse();
-                let chkHtml = '<span style="color: var(--text-muted); font-size: 0.9rem;">Meses a incluir:</span>';
-                mesesDisponibles.forEach(mk => {
-                    const [yy, mm] = mk.split('-');
-                    const nom = meses[parseInt(mm)-1] + ' ' + yy;
-                    chkHtml += `
-                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.9rem; cursor: pointer;">
-                            <input type="checkbox" class="chk-mes-historico" value="${mk}" checked onchange="app.renderReporte()">
-                            ${nom}
-                        </label>
-                    `;
-                });
-                filtroMesesContainer.innerHTML = chkHtml;
+            // Si es histórico, mostrar y poblar checkboxes
+            if (tipo === 'obra-historico' && filtroMesesContainer) {
+                filtroMesesContainer.style.display = 'flex';
+                
+                // Recopilar todos los meses registrados
+                const mesesSet = new Set(Object.keys(state.asistencia || {}));
+                mesesSet.add(mesKey);
+                const mesesDisponibles = Array.from(mesesSet).filter(Boolean).sort().reverse();
+                
+                // Si no hay checkboxes o cambió la cantidad, generarlos
+                const existingChecks = filtroMesesContainer.querySelectorAll('.chk-mes-historico');
+                if (existingChecks.length === 0) {
+                    let chkHtml = '<span style="color: #94a3b8; font-size: 0.9rem; font-weight: 500; margin-right: 8px;">Meses a incluir:</span>';
+                    mesesDisponibles.forEach(mk => {
+                        const [yy, mm] = mk.split('-');
+                        const nom = (meses[parseInt(mm)-1] || mm) + ' ' + yy;
+                        chkHtml += `
+                            <label style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.06); padding: 5px 12px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; user-select: none; border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+                                <input type="checkbox" class="chk-mes-historico" value="${mk}" checked onchange="app.renderReporte()" style="cursor: pointer; accent-color: var(--primary);">
+                                <span>${nom}</span>
+                            </label>
+                        `;
+                    });
+                    filtroMesesContainer.innerHTML = chkHtml;
+                }
+            } else if (filtroMesesContainer) {
+                filtroMesesContainer.style.display = 'none';
             }
         } else if (tipo === 'trabajador') {
             obraSelect.style.display = 'none';
@@ -981,7 +997,12 @@ const app = {
                 let costoTotal = 0;
                 
                 // Extraer los meses seleccionados en los checkboxes
-                const chkMeses = Array.from(document.querySelectorAll('.chk-mes-historico:checked')).map(chk => chk.value);
+                let chkMeses = Array.from(document.querySelectorAll('.chk-mes-historico:checked')).map(chk => chk.value);
+                if (chkMeses.length === 0) {
+                    const mesesSet = new Set(Object.keys(state.asistencia || {}));
+                    mesesSet.add(mesKey);
+                    chkMeses = Array.from(mesesSet).filter(Boolean);
+                }
                 
                 state.trabajadores.forEach(t => {
                     let jornadasTrabajador = 0;
@@ -995,7 +1016,8 @@ const app = {
                         }
                         if (subJornadas > 0) {
                             jornadasTrabajador += subJornadas;
-                            const nom = meses[parseInt(mk.split('-')[1])-1] + ' ' + mk.split('-')[0];
+                            const [yy, mm] = mk.split('-');
+                            const nom = (meses[parseInt(mm)-1] || mm) + ' ' + yy;
                             desgloseMeses[nom] = subJornadas;
                         }
                     });
@@ -1004,25 +1026,25 @@ const app = {
                         totalJornadas += jornadasTrabajador;
                         costoTotal += (jornadasTrabajador * t.sueldo);
                         
-                        let txtMeses = Object.keys(desgloseMeses).map(k => `${k}: ${desgloseMeses[k]} jorn.`).join('<br>');
+                        let txtMeses = Object.keys(desgloseMeses).map(k => `${k}: <strong>${desgloseMeses[k]} jorn.</strong>`).join(' | ');
                         
                         rows += `
                             <tr>
-                                <td>${t.nombre}</td>
-                                <td style="text-align:center;">${jornadasTrabajador}</td>
-                                <td style="font-size:0.85rem; color: #aaa;">${txtMeses}</td>
-                                <td style="text-align:right;">$${(jornadasTrabajador * t.sueldo).toLocaleString('es-CL')}</td>
+                                <td><strong>${t.nombre}</strong></td>
+                                <td style="text-align:center; font-weight: 600;">${jornadasTrabajador}</td>
+                                <td style="font-size:0.85rem; color: #4b5563;">${txtMeses}</td>
+                                <td style="text-align:right; font-weight: 600;">$${(jornadasTrabajador * t.sueldo).toLocaleString('es-CL')}</td>
                             </tr>
                         `;
                     }
                 });
                 
-                if (!rows) rows = `<tr><td colspan="4" style="text-align:center;">Nadie ha trabajado en esta obra en los meses seleccionados.</td></tr>`;
+                if (!rows) rows = `<tr><td colspan="4" style="text-align:center; padding: 20px;">Nadie ha trabajado en esta obra en los meses seleccionados.</td></tr>`;
                 
                 html = `
-                    <div class="report-metrics" style="background: rgba(30,30,50,0.5);">
+                    <div class="report-metrics">
                         <div class="report-metric">
-                            <span class="metric-label" style="color: #60a5fa;">Obra (Histórico)</span>
+                            <span class="metric-label">Obra (Histórico)</span>
                             <span class="metric-val" style="font-size: 1.1rem;">${obra ? obra.nombre : ''}</span>
                         </div>
                         <div class="report-metric">
@@ -1039,9 +1061,9 @@ const app = {
                         <thead>
                             <tr>
                                 <th>Trabajador</th>
-                                <th style="text-align: center; width: 100px;">Jornadas Totales</th>
+                                <th style="text-align: center; width: 120px;">Jornadas Totales</th>
                                 <th>Desglose por Mes</th>
-                                <th style="text-align: right; width: 120px;">Costo Generado</th>
+                                <th style="text-align: right; width: 130px;">Costo Acumulado</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
