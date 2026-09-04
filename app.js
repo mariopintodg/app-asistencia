@@ -1011,14 +1011,22 @@ const app = {
                     chkMeses.forEach(mk => {
                         const diasTrab = (state.asistencia[mk] || {})[t.id] || {};
                         let subJornadas = 0;
+                        let fechasMes = [];
                         for (const fecha in diasTrab) {
-                            if (diasTrab[fecha] === oId) subJornadas++;
+                            if (diasTrab[fecha] === oId) {
+                                subJornadas++;
+                                fechasMes.push(dayjs(fecha).format('DD/MM/YYYY'));
+                            }
                         }
                         if (subJornadas > 0) {
                             jornadasTrabajador += subJornadas;
+                            fechasMes.sort();
                             const [yy, mm] = mk.split('-');
                             const nom = (meses[parseInt(mm)-1] || mm) + ' ' + yy;
-                            desgloseMeses[nom] = subJornadas;
+                            desgloseMeses[nom] = {
+                                jornadas: subJornadas,
+                                fechas: fechasMes
+                            };
                         }
                     });
 
@@ -1026,14 +1034,17 @@ const app = {
                         totalJornadas += jornadasTrabajador;
                         costoTotal += (jornadasTrabajador * t.sueldo);
                         
-                        let txtMeses = Object.keys(desgloseMeses).map(k => `${k}: <strong>${desgloseMeses[k]} jorn.</strong>`).join(' | ');
+                        let txtMeses = Object.keys(desgloseMeses).map(k => {
+                            const item = desgloseMeses[k];
+                            return `<div style="margin-bottom: 6px;"><strong>${k} (${item.jornadas} jorn.):</strong> <span style="color: #4b5563;">${item.fechas.join(', ')}</span></div>`;
+                        }).join('');
                         
                         rows += `
                             <tr>
-                                <td><strong>${t.nombre}</strong></td>
-                                <td style="text-align:center; font-weight: 600;">${jornadasTrabajador}</td>
-                                <td style="font-size:0.85rem; color: #4b5563;">${txtMeses}</td>
-                                <td style="text-align:right; font-weight: 600;">$${(jornadasTrabajador * t.sueldo).toLocaleString('es-CL')}</td>
+                                <td style="vertical-align: top;"><strong>${t.nombre}</strong></td>
+                                <td style="text-align:center; font-weight: 600; vertical-align: top;">${jornadasTrabajador}</td>
+                                <td style="font-size:0.85rem; vertical-align: top;">${txtMeses}</td>
+                                <td style="text-align:right; font-weight: 600; vertical-align: top;">$${(jornadasTrabajador * t.sueldo).toLocaleString('es-CL')}</td>
                             </tr>
                         `;
                     }
